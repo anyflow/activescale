@@ -70,13 +70,20 @@ func main() {
 		klog.Fatalf("parse flags: %v", err)
 	}
 	defer klog.Flush()
+	klog.Infof("starting activescale init")
+	klog.Infof("config grpc_port=%s redis_addr=%s redis_context=%s metric_name=%s ttl=%s log_verbosity=%s summary_interval=%s",
+		grpcPort, redisAddr, redisContext, defaultMetricName, ttl, pflag.CommandLine.Lookup("v").Value.String(), defaultSummaryInterval)
 
 	// redis
+	klog.Infof("initializing redis client")
 	redisOpts := &redis.Options{Addr: redisAddr}
-	if envBool("REDIS_TLS", false) {
+	redisTLS := envBool("REDIS_TLS", false)
+	if redisTLS {
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: envBool("REDIS_TLS_INSECURE", false),
 		}
+		klog.Infof("redis tls enabled=%t insecure=%t ca_file_set=%t",
+			redisTLS, tlsConfig.InsecureSkipVerify, os.Getenv("REDIS_CA_FILE") != "")
 		if caFile := os.Getenv("REDIS_CA_FILE"); caFile != "" {
 			caPEM, err := os.ReadFile(caFile)
 			if err != nil {
@@ -92,13 +99,16 @@ func main() {
 	}
 	rdb := redis.NewClient(redisOpts)
 	store := redisstore.New(rdb, ttl, redisContext)
+	klog.Infof("redis client initialized")
 
 	// 1) gRPC sink server
+	klog.Infof("initializing envoy metrics gRPC server")
 	go func() {
 		lis, err := net.Listen("tcp", ":"+grpcPort)
 		if err != nil {
 			klog.Fatalf("grpc listen: %v", err)
 		}
+		klog.Infof("envoy metrics gRPC port bound addr=:%s", grpcPort)
 		gs := grpc.NewServer()
 		envoy.NewMetricsServer(store, defaultSummaryInterval, defaultMetricName).Register(gs)
 		klog.Infof("envoy metrics gRPC listening on %s", ":"+grpcPort)
@@ -110,14 +120,17 @@ func main() {
 	// 2) custom-metrics apiserver
 	// framework는 보통 HTTPS + authn/authz + APIService 연동을 처리.
 	// 여기서는 “provider만 주입”하는 최소 형태로 작성합니다.
+	klog.Infof("initializing custom metrics provider")
 	cfg, err := cmd.ClientConfig()
 	if err != nil {
 		klog.Fatalf("kube config: %v", err)
 	}
+	klog.Infof("kube config initialized")
 	kube, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		klog.Fatalf("kube client: %v", err)
 	}
+	klog.Infof("kube client initialized")
 
 	podsProvider := adapterprovider.NewPodsProvider(kube, store, defaultSummaryInterval)
 	cmd.WithCustomMetrics(podsProvider)
