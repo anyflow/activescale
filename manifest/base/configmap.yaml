@@ -4,11 +4,19 @@ metadata:
   name: activescale-config
   namespace: ns-observability
 data:
-  GRPC_PORT: "9000"
+  # Envoy metric name to ingest.
+  METRIC_NAME: "envoy_http_downstream_rq_active"
+  # Redis key prefix/context, e.g. "activescale:tcn".
+  REDIS_CONTEXT: "activescale:tcn"
+  # Redis/Valkey address (<host>:<port>).
   REDIS_ADDR: "redis.custom-metrics.svc.cluster.local:6379"
+  # Enable TLS for Redis/Valkey (true/false).
   REDIS_TLS: "true"
+  # Envoy gRPC sink listen port.
+  GRPC_PORT: "9000"
+  # Metric TTL duration.
   METRIC_TTL: "20s"
   # Klog verbosity: 0=info, 1-3=more detail, 4=debug (e.g., per-pod values).
   LOG_VERBOSITY: "0"
-  # LOG_METRICS_SUMMARY_INTERVAL controls INFO-level summary logging interval.
+  # Summary logging interval for Envoy ingest and API responses.
   LOG_METRICS_SUMMARY_INTERVAL: "30s"

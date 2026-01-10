@@ -10,16 +10,17 @@ import (
 )
 
 type Store struct {
-	rdb *redis.Client
-	ttl time.Duration
+	rdb     *redis.Client
+	ttl     time.Duration
+	context string
 }
 
-func New(rdb *redis.Client, ttl time.Duration) *Store {
-	return &Store{rdb: rdb, ttl: ttl}
+func New(rdb *redis.Client, ttl time.Duration, context string) *Store {
+	return &Store{rdb: rdb, ttl: ttl, context: context}
 }
 
 func (s *Store) key(ns, pod, metric string) string {
-	return fmt.Sprintf("cm:%s:%s:%s", ns, pod, metric)
+	return fmt.Sprintf("%s:%s:%s:%s", s.context, ns, pod, metric)
 }
 
 // SetGauge stores a single gauge value with TTL.

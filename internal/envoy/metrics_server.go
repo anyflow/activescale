@@ -2,7 +2,6 @@
 package envoy
 
 import (
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,12 +23,14 @@ type MetricsServer struct {
 	logOnce      sync.Once
 	logEvery     time.Duration
 	recvBatches  uint64
+	metricName   string
 }
 
-func NewMetricsServer(store *redisstore.Store, logEvery time.Duration) *MetricsServer {
+func NewMetricsServer(store *redisstore.Store, logEvery time.Duration, metricName string) *MetricsServer {
 	return &MetricsServer{
-		store:    store,
-		logEvery: logEvery,
+		store:      store,
+		logEvery:   logEvery,
+		metricName: metricName,
 	}
 }
 
@@ -62,8 +63,13 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 		for _, mf := range msg.GetEnvoyMetrics() {
 			// EnvoyMetrics에는 Counter/Gauge/Histogram이 섞여 있음
 			name := mf.GetName()
-			// 보통 "envoy_http_downstream_rq_active" 포함 여부
-			if !strings.Contains(name, "downstream_rq_active") {
+			if name == "" {
+				klog.V(4).Info("missing metric family name")
+				continue
+			}
+			// Validate exact metric name to avoid accidentally ingesting other metrics.
+			if name != s.metricName {
+				klog.V(4).Infof("skipping metric name=%s", name)
 				continue
 			}
 			for _, m := range mf.GetMetric() {

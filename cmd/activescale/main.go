@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"flag"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	redisstore "activescale/internal/redis"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
 
 	"k8s.io/client-go/kubernetes"
@@ -30,10 +32,13 @@ func main() {
 		ttl       time.Duration
 		grpcPort  string
 	)
-	cmd := &basecmd.AdapterBase{}
-	klog.InitFlags(cmd.Flags())
+	cmd := &basecmd.AdapterBase{FlagSet: pflag.CommandLine}
+	klog.InitFlags(nil)
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	defaultRedisAddr := envOr("REDIS_ADDR", "redis:6379")
+	defaultRedisContext := envOr("REDIS_CONTEXT", "activescale:tcn")
 	defaultGRPCPort := envOr("GRPC_PORT", "9000")
+	defaultMetricName := envOr("METRIC_NAME", "envoy_http_downstream_rq_active")
 	defaultTTL := 20 * time.Second
 	defaultSummaryInterval := 30 * time.Second
 	if envSummary := os.Getenv("LOG_METRICS_SUMMARY_INTERVAL"); envSummary != "" {
@@ -52,15 +57,16 @@ func main() {
 	}
 
 	if envVerbosity := os.Getenv("LOG_VERBOSITY"); envVerbosity != "" {
-		if err := cmd.Flags().Set("v", envVerbosity); err != nil {
+		if err := pflag.CommandLine.Set("v", envVerbosity); err != nil {
 			klog.Fatalf("invalid LOG_VERBOSITY: %v", err)
 		}
 	}
 
-	cmd.Flags().StringVar(&redisAddr, "redis-addr", defaultRedisAddr, "redis address")
-	cmd.Flags().DurationVar(&ttl, "ttl", defaultTTL, "metric TTL (e.g. 20s)")
-	cmd.Flags().StringVar(&grpcPort, "grpc-port", defaultGRPCPort, "envoy metrics gRPC listen port")
-	if err := cmd.Flags().Parse(os.Args); err != nil {
+	pflag.CommandLine.StringVar(&redisAddr, "redis-addr", defaultRedisAddr, "redis address")
+	redisContext := defaultRedisContext
+	pflag.CommandLine.DurationVar(&ttl, "ttl", defaultTTL, "metric TTL (e.g. 20s)")
+	pflag.CommandLine.StringVar(&grpcPort, "grpc-port", defaultGRPCPort, "envoy metrics gRPC listen port")
+	if err := pflag.CommandLine.Parse(os.Args); err != nil {
 		klog.Fatalf("parse flags: %v", err)
 	}
 	defer klog.Flush()
@@ -85,7 +91,7 @@ func main() {
 		redisOpts.TLSConfig = tlsConfig
 	}
 	rdb := redis.NewClient(redisOpts)
-	store := redisstore.New(rdb, ttl)
+	store := redisstore.New(rdb, ttl, redisContext)
 
 	// 1) gRPC sink server
 	go func() {
@@ -94,7 +100,7 @@ func main() {
 			klog.Fatalf("grpc listen: %v", err)
 		}
 		gs := grpc.NewServer()
-		envoy.NewMetricsServer(store, defaultSummaryInterval).Register(gs)
+		envoy.NewMetricsServer(store, defaultSummaryInterval, defaultMetricName).Register(gs)
 		klog.Infof("envoy metrics gRPC listening on %s", ":"+grpcPort)
 		if err := gs.Serve(lis); err != nil {
 			klog.Fatalf("grpc serve: %v", err)
