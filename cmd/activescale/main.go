@@ -39,22 +39,8 @@ func main() {
 	defaultRedisContext := envOr("REDIS_CONTEXT", "activescale:tcn")
 	defaultGRPCPort := envOr("GRPC_PORT", "9000")
 	defaultMetricName := envOr("METRIC_NAME", "envoy_http_downstream_rq_active")
-	defaultTTL := 20 * time.Second
-	defaultSummaryInterval := 30 * time.Second
-	if envSummary := os.Getenv("LOG_METRICS_SUMMARY_INTERVAL"); envSummary != "" {
-		parsed, err := time.ParseDuration(envSummary)
-		if err != nil {
-			klog.Fatalf("invalid LOG_METRICS_SUMMARY_INTERVAL: %v", err)
-		}
-		defaultSummaryInterval = parsed
-	}
-	if envTTL := os.Getenv("METRIC_TTL"); envTTL != "" {
-		parsed, err := time.ParseDuration(envTTL)
-		if err != nil {
-			klog.Fatalf("invalid METRIC_TTL: %v", err)
-		}
-		defaultTTL = parsed
-	}
+	defaultTTL := envDuration("METRIC_TTL", 20*time.Second)
+	defaultSummaryInterval := envDuration("LOG_METRICS_SUMMARY_INTERVAL", 30*time.Second)
 
 	if envVerbosity := os.Getenv("LOG_VERBOSITY"); envVerbosity != "" {
 		if err := pflag.CommandLine.Set("v", envVerbosity); err != nil {
@@ -161,6 +147,18 @@ func envBool(key string, fallback bool) bool {
 		return fallback
 	}
 	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		klog.Fatalf("invalid %s: %v", key, err)
+	}
+	return parsed
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(v)
 	if err != nil {
 		klog.Fatalf("invalid %s: %v", key, err)
 	}

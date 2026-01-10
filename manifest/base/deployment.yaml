@@ -4,6 +4,7 @@ metadata:
   name: activescale
   namespace: ns-observability
   labels:
+    thinq.service: activescale
     app: activescale
     workload: metrics-adapter
 spec:
@@ -15,10 +16,13 @@ spec:
   template:
     metadata:
       labels:
+        thinq.service: activescale
         app: activescale
         workload: metrics-adapter
     spec:
       serviceAccountName: activescale
+      nodeSelector:
+        nodepool: np-cluster-arm64
       containers:
         - name: activescale
           image: ghcr.io/anyflow/activescale:latest
