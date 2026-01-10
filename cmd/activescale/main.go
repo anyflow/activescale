@@ -127,11 +127,31 @@ func main() {
 		}
 	}()
 
-	// 프로세스 유지
-	klog.Fatalf("http server error: %v", http.ListenAndServe(":18080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
+	// 프로세스 유지 (liveness/readiness endpoints)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
-	})))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := rdb.Ping(ctx).Err(); err != nil {
+			klog.Warningf("readiness check failed: %v", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready"))
+			return
+		}
+		if _, err := kube.Discovery().ServerVersion(); err != nil {
+			klog.Warningf("readiness check failed (kube): %v", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
+	})
+	klog.Fatalf("http server error: %v", http.ListenAndServe(":18080", mux))
 }
 
 func envOr(key, fallback string) string {

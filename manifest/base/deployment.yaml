@@ -8,7 +8,6 @@ metadata:
     app: activescale
     workload: metrics-adapter
 spec:
-  replicas: 2
   selector:
     matchLabels:
       app: activescale
@@ -26,6 +25,13 @@ spec:
       containers:
         - name: activescale
           image: ghcr.io/anyflow/activescale:latest
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
           args:
             - --secure-port=6443
             - --cert-dir=/var/run/serving-cert
@@ -37,6 +43,20 @@ spec:
               containerPort: 6443
             - name: envoy-grpc
               containerPort: 9000
+            - name: health
+              containerPort: 18080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
           volumeMounts:
             - name: serving-cert
               mountPath: /var/run/serving-cert
