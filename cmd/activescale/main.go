@@ -1,11 +1,10 @@
-// cmd/adapter/main.go
+// cmd/activescale/main.go
 package main
 
 import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -20,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 
 	basecmd "sigs.k8s.io/custom-metrics-apiserver/pkg/cmd"
 )
@@ -31,23 +31,39 @@ func main() {
 		grpcPort  string
 	)
 	cmd := &basecmd.AdapterBase{}
+	klog.InitFlags(cmd.Flags())
 	defaultRedisAddr := envOr("REDIS_ADDR", "redis:6379")
 	defaultGRPCPort := envOr("GRPC_PORT", "9000")
 	defaultTTL := 20 * time.Second
+	defaultSummaryInterval := 30 * time.Second
+	if envSummary := os.Getenv("LOG_METRICS_SUMMARY_INTERVAL"); envSummary != "" {
+		parsed, err := time.ParseDuration(envSummary)
+		if err != nil {
+			klog.Fatalf("invalid LOG_METRICS_SUMMARY_INTERVAL: %v", err)
+		}
+		defaultSummaryInterval = parsed
+	}
 	if envTTL := os.Getenv("METRIC_TTL"); envTTL != "" {
 		parsed, err := time.ParseDuration(envTTL)
 		if err != nil {
-			log.Fatalf("invalid METRIC_TTL: %v", err)
+			klog.Fatalf("invalid METRIC_TTL: %v", err)
 		}
 		defaultTTL = parsed
+	}
+
+	if envVerbosity := os.Getenv("LOG_VERBOSITY"); envVerbosity != "" {
+		if err := cmd.Flags().Set("v", envVerbosity); err != nil {
+			klog.Fatalf("invalid LOG_VERBOSITY: %v", err)
+		}
 	}
 
 	cmd.Flags().StringVar(&redisAddr, "redis-addr", defaultRedisAddr, "redis address")
 	cmd.Flags().DurationVar(&ttl, "ttl", defaultTTL, "metric TTL (e.g. 20s)")
 	cmd.Flags().StringVar(&grpcPort, "grpc-port", defaultGRPCPort, "envoy metrics gRPC listen port")
 	if err := cmd.Flags().Parse(os.Args); err != nil {
-		log.Fatalf("parse flags: %v", err)
+		klog.Fatalf("parse flags: %v", err)
 	}
+	defer klog.Flush()
 
 	// redis
 	redisOpts := &redis.Options{Addr: redisAddr}
@@ -58,11 +74,11 @@ func main() {
 		if caFile := os.Getenv("REDIS_CA_FILE"); caFile != "" {
 			caPEM, err := os.ReadFile(caFile)
 			if err != nil {
-				log.Fatalf("read REDIS_CA_FILE: %v", err)
+				klog.Fatalf("read REDIS_CA_FILE: %v", err)
 			}
 			certPool := x509.NewCertPool()
 			if !certPool.AppendCertsFromPEM(caPEM) {
-				log.Fatal("failed to parse REDIS_CA_FILE PEM")
+				klog.Fatal("failed to parse REDIS_CA_FILE PEM")
 			}
 			tlsConfig.RootCAs = certPool
 		}
@@ -75,13 +91,13 @@ func main() {
 	go func() {
 		lis, err := net.Listen("tcp", ":"+grpcPort)
 		if err != nil {
-			log.Fatalf("grpc listen: %v", err)
+			klog.Fatalf("grpc listen: %v", err)
 		}
 		gs := grpc.NewServer()
-		envoy.NewMetricsServer(store).Register(gs)
-		log.Printf("envoy metrics gRPC listening on %s", ":"+grpcPort)
+		envoy.NewMetricsServer(store, defaultSummaryInterval).Register(gs)
+		klog.Infof("envoy metrics gRPC listening on %s", ":"+grpcPort)
 		if err := gs.Serve(lis); err != nil {
-			log.Fatalf("grpc serve: %v", err)
+			klog.Fatalf("grpc serve: %v", err)
 		}
 	}()
 
@@ -90,24 +106,24 @@ func main() {
 	// 여기서는 “provider만 주입”하는 최소 형태로 작성합니다.
 	cfg, err := cmd.ClientConfig()
 	if err != nil {
-		log.Fatalf("kube config: %v", err)
+		klog.Fatalf("kube config: %v", err)
 	}
 	kube, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		log.Fatalf("kube client: %v", err)
+		klog.Fatalf("kube client: %v", err)
 	}
 
-	podsProvider := adapterprovider.NewPodsProvider(kube, store)
+	podsProvider := adapterprovider.NewPodsProvider(kube, store, defaultSummaryInterval)
 	cmd.WithCustomMetrics(podsProvider)
 
 	go func() {
 		if err := cmd.Run(context.Background()); err != nil {
-			log.Fatalf("adapter run: %v", err)
+			klog.Fatalf("adapter run: %v", err)
 		}
 	}()
 
 	// 프로세스 유지
-	log.Fatal(http.ListenAndServe(":18080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	klog.Fatalf("http server error: %v", http.ListenAndServe(":18080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		_, _ = w.Write([]byte("ok"))
 	})))
@@ -127,7 +143,7 @@ func envBool(key string, fallback bool) bool {
 	}
 	parsed, err := strconv.ParseBool(v)
 	if err != nil {
-		log.Fatalf("invalid %s: %v", key, err)
+		klog.Fatalf("invalid %s: %v", key, err)
 	}
 	return parsed
 }

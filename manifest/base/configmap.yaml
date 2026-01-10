@@ -8,3 +8,7 @@ data:
   REDIS_ADDR: "redis.custom-metrics.svc.cluster.local:6379"
   REDIS_TLS: "true"
   METRIC_TTL: "20s"
+  # Klog verbosity: 0=info, 1-3=more detail, 4=debug (e.g., per-pod values).
+  LOG_VERBOSITY: "0"
+  # LOG_METRICS_SUMMARY_INTERVAL controls INFO-level summary logging interval.
+  LOG_METRICS_SUMMARY_INTERVAL: "30s"

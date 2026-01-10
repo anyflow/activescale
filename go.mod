@@ -11,6 +11,7 @@ require (
 	k8s.io/apimachinery v0.34.2
 	k8s.io/client-go v0.34.2
 	k8s.io/metrics v0.34.2
+	k8s.io/klog/v2 v2.130.1
 	sigs.k8s.io/custom-metrics-apiserver v1.34.0
 )
 
