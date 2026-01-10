@@ -35,6 +35,7 @@ func main() {
 	cmd := &basecmd.AdapterBase{FlagSet: pflag.CommandLine}
 	klog.InitFlags(nil)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	cmd.Flags()
 	defaultRedisAddr := envOr("REDIS_ADDR", "redis:6379")
 	defaultRedisContext := envOr("REDIS_CONTEXT", "activescale:tcn")
 	defaultGRPCPort := envOr("GRPC_PORT", "9000")

@@ -20,11 +20,6 @@ run:
 		--redis-addr=$${REDIS_ADDR:-localhost:6379} \
 		--ttl=$${METRIC_TTL:-20s}
 
-deps-update:
-	# Update dependencies and tidy go.mod/go.sum
-	go get -u ./...
-	GOCACHE=$(CURDIR)/.gocache go mod tidy
-
 IMAGE ?= ghcr.io/anyflow/activescale:latest
 PLATFORMS ?= linux/amd64,linux/arm64
 LOCAL_PLATFORM ?= linux/arm64
