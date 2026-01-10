@@ -5,7 +5,7 @@ metadata:
   namespace: ns-observability
 data:
   # Envoy metric name to ingest.
-  METRIC_NAME: "envoy_http_downstream_rq_active"
+  METRIC_NAME: "http.stats.downstream_rq_active"
   # Redis key prefix/context, e.g. "activescale:tcn".
   REDIS_CONTEXT: "activescale:tcn"
   # Redis/Valkey address (<host>:<port>).

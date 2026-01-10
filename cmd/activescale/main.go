@@ -39,7 +39,7 @@ func main() {
 	defaultRedisAddr := envOr("REDIS_ADDR", "redis:6379")
 	defaultRedisContext := envOr("REDIS_CONTEXT", "activescale:tcn")
 	defaultGRPCPort := envOr("GRPC_PORT", "9000")
-	defaultMetricName := envOr("METRIC_NAME", "envoy_http_downstream_rq_active")
+	defaultMetricName := envOr("METRIC_NAME", "http.stats.downstream_rq_active")
 	defaultTTL := envDuration("METRIC_TTL", 20*time.Second)
 	defaultSummaryInterval := envDuration("LOG_METRICS_SUMMARY_INTERVAL", 30*time.Second)
 

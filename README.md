@@ -12,7 +12,6 @@
 - Klog-based logging with verbosity control (`LOG_VERBOSITY`)
 - Periodic summary logs for Envoy ingest and API responses
 
-
 ## Architecture
 
 ```mermaid
@@ -44,3 +43,57 @@ graph LR
     style PodB fill:#FAFAFA,stroke:#999
 	  style PodC fill:#FAFAFA,stroke:#999
 ```
+
+## Debugging
+
+Check Custom Metrics API is registered:
+```bash
+kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2'
+```
+
+Query a metric with a selector:
+```bash
+kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/active_requests?labelSelector=app=<app>,ticker=<ticker>'
+```
+
+Confirm the workload labels:
+```bash
+kubectl get pods -n <ns> -l app=<app>,ticker=<ticker> --show-labels
+```
+
+Check activescale ingest logs:
+```bash
+kubectl logs -n ns-observability deploy/activescale | rg -n "metrics batches received|stored active_requests|skipping metric name|missing pod identity"
+```
+
+Enable debug logs and restart:
+```bash
+kubectl -n ns-observability set env deploy/activescale LOG_VERBOSITY=4
+kubectl -n ns-observability rollout restart deploy/activescale
+```
+
+Confirm Envoy bootstrap includes the metrics service:
+```bash
+istioctl proxy-config bootstrap <pod> -n <ns> | rg -n "envoyMetricsService|metrics_service|envoy_grpc|cluster_name|activescale|9000"
+```
+
+Confirm which istiod a proxy is connected to:
+```bash
+istioctl proxy-status | rg -n "<pod-prefix>"
+```
+
+Restart control plane and workload after meshConfig changes:
+```bash
+kubectl rollout restart deploy -n istio-system istiod-1-25-2
+kubectl rollout restart deploy -n <ns> <workload>
+```
+
+## Notes
+
+Envoy prefixes by stats scope for metrics ending with `downstream_rq_active`.
+
+- `http.stats.downstream_rq_active` is the same metric as the Prometheus-style `envoy_http_downstream_rq_active`.
+- Similar scope-prefixed variants (admin/agent/inbound) are dropped by activescale.
+    - `http.admin.*`: Envoy admin interface (management) traffic
+    - `http.agent.*`: Istio/Envoy internal agent traffic
+    - `http.inbound_0.0.0.0_9000;.*`: stats scoped to the inbound listener at `0.0.0.0:9000`
