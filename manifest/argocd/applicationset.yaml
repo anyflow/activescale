@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: activescale
+  namespace: argocd
+spec:
+  generators:
+    - git:
+        repoURL: ssh://git@gitea.thinq.link:2222/cluster/activescale.git
+        revision: main
+        directories:
+          - path: manifest/*
+          - path: manifest/base
+            exclude: true
+  template:
+    metadata:
+      name: "{{path.basename}}-cluster"
+    spec:
+      project: activescale
+      source:
+        repoURL: ssh://git@gitea.thinq.link:2222/cluster/activescale.git
+        targetRevision: main
+        path: "{{path}}"
+      destination:
+        name: "{{path.basename}}-cluster"
+        namespace: ns-observability

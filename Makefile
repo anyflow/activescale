@@ -15,6 +15,6 @@ test:
 
 run:
 	go run ./cmd/activescale \
-		--grpc-addr=$${GRPC_ADDR:-:9000} \
+		--grpc-port=$${GRPC_PORT:-9000} \
 		--redis-addr=$${REDIS_ADDR:-localhost:6379} \
 		--ttl=$${METRIC_TTL:-20s}

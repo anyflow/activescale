@@ -3,15 +3,14 @@ kind: APIService
 metadata:
   name: v1beta2.custom.metrics.k8s.io
   labels:
-    app.kubernetes.io/name: activescale
-    app.kubernetes.io/component: metrics-adapter
-    app.kubernetes.io/part-of: activescale
+    app: activescale
+    workload: metrics-adapter
 spec:
   group: custom.metrics.k8s.io
   version: v1beta2
   service:
     name: activescale
-    namespace: custom-metrics
+    namespace: ns-observability
   insecureSkipTLSVerify: true
   groupPriorityMinimum: 100
   versionPriority: 200

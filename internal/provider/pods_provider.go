@@ -55,9 +55,9 @@ func (p *PodsProvider) GetMetricBySelector(
 		if err != nil {
 			return nil, err
 		}
-		// 정책: 누락이면 0으로 반환(또는 제외). 여기선 0.
 		if !ok {
-			val = 0
+			// Skip pods with no value (including TTL-expired entries).
+			continue
 		}
 
 		mv := custommetrics.MetricValue{
@@ -74,6 +74,11 @@ func (p *PodsProvider) GetMetricBySelector(
 			Value:     *resource.NewQuantity(int64(val), resource.DecimalSI), // rq_active는 보통 정수 성격
 		}
 		out.Items = append(out.Items, mv)
+	}
+
+	if len(out.Items) == 0 {
+		// Returning an error makes the API respond with 5xx, so HPA treats metrics as unavailable.
+		return nil, fmt.Errorf("no metrics available for selector")
 	}
 
 	return out, nil
@@ -96,7 +101,8 @@ func (p *PodsProvider) GetMetricByName(
 		return nil, err
 	}
 	if !ok {
-		val = 0
+		// Returning an error makes the API respond with 5xx, so HPA treats metrics as unavailable.
+		return nil, fmt.Errorf("no metrics available for pod")
 	}
 
 	now := metav1.NewTime(time.Now())

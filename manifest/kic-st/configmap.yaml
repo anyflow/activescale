@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: activescale-config
+  namespace: ns-observability
+data:
+  REDIS_ADDR: "redis-an2-tcn-shared-dev-gda4i2.serverless.apn2.cache.amazonaws.com:6379"

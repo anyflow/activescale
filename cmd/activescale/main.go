@@ -3,10 +3,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"activescale/internal/envoy"
@@ -25,11 +28,11 @@ func main() {
 	var (
 		redisAddr string
 		ttl       time.Duration
-		grpcAddr  string
+		grpcPort  string
 	)
 	cmd := &basecmd.AdapterBase{}
 	defaultRedisAddr := envOr("REDIS_ADDR", "redis:6379")
-	defaultGRPCAddr := envOr("GRPC_ADDR", ":9000")
+	defaultGRPCPort := envOr("GRPC_PORT", "9000")
 	defaultTTL := 20 * time.Second
 	if envTTL := os.Getenv("METRIC_TTL"); envTTL != "" {
 		parsed, err := time.ParseDuration(envTTL)
@@ -41,24 +44,42 @@ func main() {
 
 	cmd.Flags().StringVar(&redisAddr, "redis-addr", defaultRedisAddr, "redis address")
 	cmd.Flags().DurationVar(&ttl, "ttl", defaultTTL, "metric TTL (e.g. 20s)")
-	cmd.Flags().StringVar(&grpcAddr, "grpc-addr", defaultGRPCAddr, "envoy metrics gRPC listen addr")
+	cmd.Flags().StringVar(&grpcPort, "grpc-port", defaultGRPCPort, "envoy metrics gRPC listen port")
 	if err := cmd.Flags().Parse(os.Args); err != nil {
 		log.Fatalf("parse flags: %v", err)
 	}
 
 	// redis
-	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	redisOpts := &redis.Options{Addr: redisAddr}
+	if envBool("REDIS_TLS", false) {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: envBool("REDIS_TLS_INSECURE", false),
+		}
+		if caFile := os.Getenv("REDIS_CA_FILE"); caFile != "" {
+			caPEM, err := os.ReadFile(caFile)
+			if err != nil {
+				log.Fatalf("read REDIS_CA_FILE: %v", err)
+			}
+			certPool := x509.NewCertPool()
+			if !certPool.AppendCertsFromPEM(caPEM) {
+				log.Fatal("failed to parse REDIS_CA_FILE PEM")
+			}
+			tlsConfig.RootCAs = certPool
+		}
+		redisOpts.TLSConfig = tlsConfig
+	}
+	rdb := redis.NewClient(redisOpts)
 	store := redisstore.New(rdb, ttl)
 
 	// 1) gRPC sink server
 	go func() {
-		lis, err := net.Listen("tcp", grpcAddr)
+		lis, err := net.Listen("tcp", ":"+grpcPort)
 		if err != nil {
 			log.Fatalf("grpc listen: %v", err)
 		}
 		gs := grpc.NewServer()
 		envoy.NewMetricsServer(store).Register(gs)
-		log.Printf("envoy metrics gRPC listening on %s", grpcAddr)
+		log.Printf("envoy metrics gRPC listening on %s", ":"+grpcPort)
 		if err := gs.Serve(lis); err != nil {
 			log.Fatalf("grpc serve: %v", err)
 		}
@@ -97,4 +118,16 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		log.Fatalf("invalid %s: %v", key, err)
+	}
+	return parsed
 }

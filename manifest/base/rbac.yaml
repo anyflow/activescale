@@ -2,11 +2,10 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: activescale
-  namespace: custom-metrics
+  namespace: ns-observability
   labels:
-    app.kubernetes.io/name: activescale
-    app.kubernetes.io/component: metrics-adapter
-    app.kubernetes.io/part-of: activescale
+    app: activescale
+    workload: metrics-adapter
 ---
 # (필수) API 서버 인증 위임을 위해 kube-system ConfigMap을 읽는 권한
 apiVersion: rbac.authorization.k8s.io/v1
@@ -21,7 +20,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: activescale
-    namespace: custom-metrics
+    namespace: ns-observability
 ---
 # (필수) delegated auth
 apiVersion: rbac.authorization.k8s.io/v1
@@ -35,7 +34,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: activescale
-    namespace: custom-metrics
+    namespace: ns-observability
 ---
 # (필수) pod 조회 권한
 apiVersion: rbac.authorization.k8s.io/v1
@@ -58,4 +57,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: activescale
-    namespace: custom-metrics
+    namespace: ns-observability
