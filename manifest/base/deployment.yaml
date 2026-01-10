@@ -15,13 +15,13 @@ spec:
   template:
     metadata:
       labels:
-    app: activescale
-    workload: metrics-adapter
+        app: activescale
+        workload: metrics-adapter
     spec:
       serviceAccountName: activescale
       containers:
-        - name: activescale-adapter
-          image: ghcr.io/your-org/activescale-adapter:latest
+        - name: activescale
+          image: ghcr.io/anyflow/activescale:latest
           args:
             - --secure-port=6443
             - --cert-dir=/var/run/serving-cert
