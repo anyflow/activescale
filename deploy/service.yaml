@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: activescale
+  namespace: custom-metrics
+  labels:
+    app.kubernetes.io/name: activescale
+    app.kubernetes.io/component: metrics-adapter
+    app.kubernetes.io/part-of: activescale
+spec:
+  selector:
+    app.kubernetes.io/name: activescale
+    app.kubernetes.io/component: metrics-adapter
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+    - name: envoy-grpc
+      port: 9000
+      targetPort: envoy-grpc

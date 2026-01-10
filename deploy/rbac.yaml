@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: activescale
+  namespace: custom-metrics
+  labels:
+    app.kubernetes.io/name: activescale
+    app.kubernetes.io/component: metrics-adapter
+    app.kubernetes.io/part-of: activescale
+---
+# (필수) API 서버 인증 위임을 위해 kube-system ConfigMap을 읽는 권한
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: custom-metrics-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: activescale
+    namespace: custom-metrics
+---
+# (필수) delegated auth
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: custom-metrics-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: activescale
+    namespace: custom-metrics
+---
+# (필수) pod 조회 권한
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: activescale-pod-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: activescale-pod-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: activescale-pod-reader
+subjects:
+  - kind: ServiceAccount
+    name: activescale
+    namespace: custom-metrics
