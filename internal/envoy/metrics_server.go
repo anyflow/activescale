@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"strings"
 
 	redisstore "activescale/internal/redis"
 
@@ -22,7 +23,10 @@ type MetricsServer struct {
 
 	logOnce      sync.Once
 	logEvery     time.Duration
-	recvBatches  uint64
+	recvMessages uint64
+	dropByID    uint64
+	dropName     uint64
+	storedGauges uint64
 	metricName   string
 }
 
@@ -44,18 +48,26 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 		go s.logSummary()
 	})
 
+	var streamNS, streamPod string
+	missingLogged := false
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
 			klog.Warningf("metrics stream recv error: %v", err)
 			return err
 		}
-		atomic.AddUint64(&s.recvBatches, 1)
+		atomic.AddUint64(&s.recvMessages, 1)
 
-		ns, pod := extractPodIdentity(msg.GetIdentifier().GetNode())
-		if ns == "" || pod == "" {
+		if streamNS == "" || streamPod == "" {
+			streamNS, streamPod = extractPodIdentity(msg.GetIdentifier().GetNode())
+		}
+		if streamNS == "" || streamPod == "" {
 			// 식별 불가면 그냥 무시(또는 metric name만 저장 등 정책 선택)
-			klog.V(4).Info("missing pod identity in metrics stream")
+			if !missingLogged {
+				klog.V(4).Info("missing pod identity in metrics stream")
+				missingLogged = true
+			}
+			atomic.AddUint64(&s.dropByID, 1)
 			continue
 		}
 
@@ -70,16 +82,18 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 			// Validate exact metric name to avoid accidentally ingesting other metrics.
 			if name != s.metricName {
 				klog.V(4).Infof("skipping metric name=%s", name)
+				atomic.AddUint64(&s.dropName, 1)
 				continue
 			}
 			for _, m := range mf.GetMetric() {
 				if g := m.GetGauge(); g != nil {
 					val := g.GetValue()
-					if err := s.store.SetGauge(ctx, ns, pod, "active_requests", val); err != nil {
-						klog.Warningf("redis set failed ns=%s pod=%s: %v", ns, pod, err)
+					if err := s.store.SetGauge(ctx, streamNS, streamPod, "active_requests", val); err != nil {
+						klog.Warningf("redis set failed ns=%s pod=%s: %v", streamNS, streamPod, err)
 						continue
 					}
-					klog.V(4).Infof("stored active_requests ns=%s pod=%s value=%.6f", ns, pod, val)
+					atomic.AddUint64(&s.storedGauges, 1)
+					klog.V(4).Infof("stored active_requests ns=%s pod=%s value=%.6f", streamNS, streamPod, val)
 				}
 			}
 		}
@@ -91,30 +105,41 @@ func (s *MetricsServer) logSummary() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		batches := atomic.SwapUint64(&s.recvBatches, 0)
-		klog.Infof("envoy metrics batches received in last %s: %d", s.logEvery, batches)
+		messages := atomic.SwapUint64(&s.recvMessages, 0)
+		dropByID := atomic.SwapUint64(&s.dropByID, 0)
+		dropName := atomic.SwapUint64(&s.dropName, 0)
+		stored := atomic.SwapUint64(&s.storedGauges, 0)
+		klog.Infof("envoy metrics summary in last %s: messages=%d stored=%d dropped_by_ids=%d dropped_by_names=%d",
+			s.logEvery, messages, stored, dropByID, dropName)
 	}
 }
 
 func extractPodIdentity(node *corev3.Node) (namespace, pod string) {
-	if node == nil || node.Metadata == nil {
+	if node == nil {
 		return "", ""
 	}
-	// Istio 환경에서 metadata 키가 환경/버전마다 다를 수 있어 복수 키를 허용
-	get := func(keys ...string) string {
-		for _, k := range keys {
-			if v, ok := node.Metadata.Fields[k]; ok && v.GetKind() != nil {
-				// string value만 처리
-				if sv := v.GetStringValue(); sv != "" {
-					return sv
-				}
-			}
-		}
-		return ""
+	// Istio node.id 형식: sidecar~<ip>~<pod>.<namespace>~<namespace>.svc.cluster.local
+	id := node.GetId()
+	if id == "" {
+		return "", ""
 	}
-
-	// 사용자가 문서에 적어둔 키 우선
-	pod = get("POD_NAME", "pod_name", "NAME", "POD", "pod")
-	namespace = get("POD_NAMESPACE", "pod_namespace", "NAMESPACE", "ns", "namespace")
+	parts := strings.Split(id, "~")
+	if len(parts) < 4 {
+		return "", ""
+	}
+	podNS := parts[2]
+	nsDomain := parts[3]
+	if podNS == "" || nsDomain == "" {
+		return "", ""
+	}
+	podParts := strings.SplitN(podNS, ".", 2)
+	if len(podParts) != 2 {
+		return "", ""
+	}
+	pod = podParts[0]
+	namespace = strings.SplitN(nsDomain, ".", 2)[0]
+	if pod == "" || namespace == "" {
+		return "", ""
+	}
 	return namespace, pod
 }

@@ -44,6 +44,47 @@ graph LR
 	  style PodC fill:#FAFAFA,stroke:#999
 ```
 
+## Envoy Metrics Message Shape
+
+Activescale receives Envoy gRPC `StreamMetrics` messages. Each message contains a node identity and a list of metric families. A simplified shape:
+
+```json
+{
+  "identifier": {
+    "node": {
+      "id": "sidecar~10.0.0.1~my-pod.my-ns~my-ns.svc.cluster.local",
+      "metadata": {
+        "NAME": "my-pod",
+        "NAMESPACE": "my-ns"
+      }
+    }
+  },
+  "envoy_metrics": [
+    {
+      "name": "http.stats.downstream_rq_active",
+      "metric": [
+        { "gauge": { "value": 3 } }
+      ]
+    },
+    {
+      "name": "cluster.xds-grpc;.circuit_breakers.default.cx_pool_open",
+      "metric": [
+        { "gauge": { "value": 1 } }
+      ]
+    }
+  ]
+}
+```
+
+### Summary Counters Meaning
+
+- `messages`: number of `StreamMetrics` messages received (one `Recv()` call).
+- `stored`: number of gauge samples stored in Redis (only for the configured `METRIC_NAME`).
+- `dropped_by_ids`: messages dropped because pod identity could not be extracted.
+- `dropped_by_names`: metric families skipped because their name did not match `METRIC_NAME`.
+
+`stored` does not necessarily equal `messages` because a message can contain multiple metric families or multiple samples, and `dropped_by_names` is counted per metric family, not per message.
+
 ## Debugging
 
 Check Custom Metrics API is registered:
@@ -54,11 +95,6 @@ kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2'
 Query a metric with a selector:
 ```bash
 kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/active_requests?labelSelector=app=<app>,ticker=<ticker>'
-```
-
-Confirm the workload labels:
-```bash
-kubectl get pods -n <ns> -l app=<app>,ticker=<ticker> --show-labels
 ```
 
 Check activescale ingest logs:
@@ -75,17 +111,6 @@ kubectl -n ns-observability rollout restart deploy/activescale
 Confirm Envoy bootstrap includes the metrics service:
 ```bash
 istioctl proxy-config bootstrap <pod> -n <ns> | rg -n "envoyMetricsService|metrics_service|envoy_grpc|cluster_name|activescale|9000"
-```
-
-Confirm which istiod a proxy is connected to:
-```bash
-istioctl proxy-status | rg -n "<pod-prefix>"
-```
-
-Restart control plane and workload after meshConfig changes:
-```bash
-kubectl rollout restart deploy -n istio-system istiod-1-25-2
-kubectl rollout restart deploy -n <ns> <workload>
 ```
 
 ## Notes
