@@ -4,3 +4,4 @@ dist/
 *.log
 /activescale
 SESSION_NOTES.md
+/test

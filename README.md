@@ -61,7 +61,7 @@ Activescale receives Envoy gRPC `StreamMetrics` messages. Each message contains 
   },
   "envoy_metrics": [
     {
-      "name": "http.stats.downstream_rq_active",
+      "name": "http.inbound_0.0.0.0_8080;.downstream_rq_active",
       "metric": [
         { "gauge": { "value": 3 } }
       ]
@@ -79,9 +79,9 @@ Activescale receives Envoy gRPC `StreamMetrics` messages. Each message contains 
 ### Summary Counters Meaning
 
 - `messages`: number of `StreamMetrics` messages received (one `Recv()` call).
-- `stored`: number of gauge samples stored in Redis (only for the configured `METRIC_NAME`).
+- `stored`: number of gauge samples stored in Redis (only for the configured `METRIC_NAME`, or auto-detected inbound `downstream_rq_active` when `METRIC_NAME` is empty).
 - `dropped_by_ids`: messages dropped because pod identity could not be extracted.
-- `dropped_by_names`: metric families skipped because their name did not match `METRIC_NAME`.
+- `dropped_by_names`: metric families skipped because their name did not match `METRIC_NAME` (or did not match the inbound auto-detect rules).
 
 `stored` does not necessarily equal `messages` because a message can contain multiple metric families or multiple samples, and `dropped_by_names` is counted per metric family, not per message.
 
@@ -94,7 +94,7 @@ kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2'
 
 Query a metric with a selector:
 ```bash
-kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/active_requests?labelSelector=app=<app>,ticker=<ticker>'
+kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/active_requests?labelSelector=app=<app>'
 ```
 
 Check activescale ingest logs:
@@ -117,8 +117,10 @@ istioctl proxy-config bootstrap <pod> -n <ns> | rg -n "envoyMetricsService|metri
 
 Envoy prefixes by stats scope for metrics ending with `downstream_rq_active`.
 
-- `http.stats.downstream_rq_active` is the same metric as the Prometheus-style `envoy_http_downstream_rq_active`.
-- Similar scope-prefixed variants (admin/agent/inbound) are dropped by activescale.
+- `METRIC_NAME` is optional. When unset or empty, activescale auto-detects inbound-scoped `downstream_rq_active` (e.g., `http.inbound_0.0.0.0_8080;.downstream_rq_active`).
+- When `METRIC_NAME` is set, only the exact match is accepted.
+- Prometheus-style `envoy_http_downstream_rq_active` maps to these scoped names; values can differ by scope.
+- Admin/agent/outbound scopes are ignored by activescale auto-detect:
     - `http.admin.*`: Envoy admin interface (management) traffic
     - `http.agent.*`: Istio/Envoy internal agent traffic
-    - `http.inbound_0.0.0.0_9000;.*`: stats scoped to the inbound listener at `0.0.0.0:9000`
+    - `http.outbound_*`: outbound listener stats

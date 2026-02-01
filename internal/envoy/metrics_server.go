@@ -72,6 +72,10 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 		}
 
 		// rq_active만 관심 (ProxyStatsMatcher로 이미 필터링된다고 가정)
+		var (
+			sumVal   float64
+			hasValue bool
+		)
 		for _, mf := range msg.GetEnvoyMetrics() {
 			// EnvoyMetrics에는 Counter/Gauge/Histogram이 섞여 있음
 			name := mf.GetName()
@@ -79,23 +83,35 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 				klog.V(4).Info("missing metric family name")
 				continue
 			}
-			// Validate exact metric name to avoid accidentally ingesting other metrics.
-			if name != s.metricName {
+			// Prefer exact match (config), but allow inbound-scoped variants.
+			// Example: Prometheus shows envoy_http_downstream_rq_active while Envoy stats
+			// exposes the inbound listener scope like "http.inbound_0.0.0.0_8080;.downstream_rq_active".
+			// Without this, we can read only "http.stats.downstream_rq_active" (often 0) and miss real load.
+			nameOK := s.metricName != "" && name == s.metricName
+			if !nameOK && strings.HasSuffix(name, "downstream_rq_active") {
+				nameOK = strings.HasPrefix(name, "http.inbound_")
+			}
+			if !nameOK {
 				klog.V(4).Infof("skipping metric name=%s", name)
 				atomic.AddUint64(&s.dropName, 1)
 				continue
 			}
 			for _, m := range mf.GetMetric() {
 				if g := m.GetGauge(); g != nil {
-					val := g.GetValue()
-					if err := s.store.SetGauge(ctx, streamNS, streamPod, "active_requests", val); err != nil {
-						klog.Warningf("redis set failed ns=%s pod=%s: %v", streamNS, streamPod, err)
-						continue
-					}
-					atomic.AddUint64(&s.storedGauges, 1)
-					klog.V(4).Infof("stored active_requests ns=%s pod=%s value=%.6f", streamNS, streamPod, val)
+					sumVal += g.GetValue()
+					hasValue = true
 				}
 			}
+		}
+		if hasValue {
+			// Sum all matching inbound-scoped rq_active metrics so it matches PromQL:
+			// sum by (pod) (envoy_http_downstream_rq_active{pod=...})
+			if err := s.store.SetGauge(ctx, streamNS, streamPod, "active_requests", sumVal); err != nil {
+				klog.Warningf("redis set failed ns=%s pod=%s: %v", streamNS, streamPod, err)
+				continue
+			}
+			atomic.AddUint64(&s.storedGauges, 1)
+			klog.V(4).Infof("stored active_requests ns=%s pod=%s value=%.6f", streamNS, streamPod, sumVal)
 		}
 	}
 }
