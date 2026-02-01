@@ -8,6 +8,7 @@ metadata:
     app: activescale
     workload: metrics-adapter
 spec:
+  revisionHistoryLimit: 1
   selector:
     matchLabels:
       app: activescale
@@ -27,12 +28,12 @@ spec:
         - name: activescale
           image: ghcr.io/anyflow/activescale:latest
           resources:
-            limits:
-              cpu: "1"
-              memory: 1Gi
             requests:
-              cpu: "1"
-              memory: 1Gi
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
           args:
             - --secure-port=6443
             - --cert-dir=/var/run/serving-cert
