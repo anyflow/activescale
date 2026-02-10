@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: activescale-config
+  namespace: ns-observability
+data:
+  REDIS_ADDR: "rediscluster-us2-op-t20-cm.srolnw.clustercfg.usw2.cache.amazonaws.com:6379"
