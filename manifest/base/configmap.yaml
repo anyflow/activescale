@@ -12,6 +12,9 @@ data:
   REDIS_ADDR: "redis.custom-metrics.svc.cluster.local:6379"
   # Enable TLS for Redis/Valkey (true/false).
   REDIS_TLS: "true"
+  # Redis connection mode (cluster redirects support).
+  # Must be explicitly set to avoid accidental misconfiguration.
+  REDIS_CLUSTER: "false"
   # Envoy gRPC sink listen port.
   GRPC_PORT: "9000"
   # Metric TTL duration.

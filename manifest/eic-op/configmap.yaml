@@ -8,3 +8,4 @@ data:
   # ElastiCache cluster endpoint without in-transit encryption (non-TLS).
   # If in-transit encryption is enabled, set this back to "true" and provide CA via REDIS_CA_FILE.
   REDIS_TLS: "false"
+  REDIS_CLUSTER: "true"

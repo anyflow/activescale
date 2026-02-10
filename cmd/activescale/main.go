@@ -64,10 +64,10 @@ func main() {
 
 	// redis
 	klog.Infof("initializing redis client")
-	redisOpts := &redis.Options{Addr: redisAddr}
 	redisTLS := envBool("REDIS_TLS", false)
+	var tlsConfig *tls.Config
 	if redisTLS {
-		tlsConfig := &tls.Config{
+		tlsConfig = &tls.Config{
 			InsecureSkipVerify: envBool("REDIS_TLS_INSECURE", false),
 		}
 		klog.Infof("redis tls enabled=%t insecure=%t ca_file_set=%t",
@@ -83,9 +83,32 @@ func main() {
 			}
 			tlsConfig.RootCAs = certPool
 		}
-		redisOpts.TLSConfig = tlsConfig
 	}
-	rdb := redis.NewClient(redisOpts)
+	// Redis Cluster returns MOVED replies unless the client supports cluster redirection.
+	// Keep the config surface area small: require a single explicit env var.
+	//
+	// REDIS_CLUSTER=true  -> use ClusterClient
+	// REDIS_CLUSTER=false -> use Client
+	if _, ok := os.LookupEnv("REDIS_CLUSTER"); !ok {
+		klog.Fatal("missing Redis mode config: set REDIS_CLUSTER=true|false")
+	}
+	redisCluster := envBool("REDIS_CLUSTER", false)
+
+	var rdb redis.Cmdable
+	if redisCluster {
+		klog.Infof("redis mode=cluster addr=%s", redisAddr)
+		rdb = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:     []string{redisAddr},
+			TLSConfig: tlsConfig,
+		})
+	} else {
+		klog.Infof("redis mode=standalone addr=%s", redisAddr)
+		rdb = redis.NewClient(&redis.Options{
+			Addr:      redisAddr,
+			TLSConfig: tlsConfig,
+		})
+	}
+
 	store := redisstore.New(rdb, ttl, redisContext)
 	klog.Infof("redis client initialized")
 

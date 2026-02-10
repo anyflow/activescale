@@ -10,12 +10,13 @@ import (
 )
 
 type Store struct {
-	rdb     *redis.Client
+	// Cmdable is implemented by *redis.Client and *redis.ClusterClient.
+	rdb     redis.Cmdable
 	ttl     time.Duration
 	context string
 }
 
-func New(rdb *redis.Client, ttl time.Duration, context string) *Store {
+func New(rdb redis.Cmdable, ttl time.Duration, context string) *Store {
 	return &Store{rdb: rdb, ttl: ttl, context: context}
 }
 
