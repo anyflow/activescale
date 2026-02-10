@@ -58,3 +58,10 @@ subjects:
   - kind: ServiceAccount
     name: activescale
     namespace: ns-observability
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: tcn-hpa-critical
+preemptionPolicy: PreemptLowerPriority
+value: 1000

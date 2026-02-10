@@ -23,6 +23,7 @@ spec:
         tcn.kyverno/exception: "true"
     spec:
       serviceAccountName: activescale
+      priorityClassName: tcn-hpa-critical
       nodeSelector:
         nodepool: np-cluster-arm64
       containers:
@@ -30,7 +31,7 @@ spec:
           image: ghcr.io/anyflow/activescale:latest
           resources:
             requests:
-              cpu: 100m
+              cpu: 50m
               memory: 128Mi
             limits:
               memory: 512Mi
