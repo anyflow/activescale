@@ -20,6 +20,7 @@ spec:
         app: activescale
         workload: metrics-adapter
         sidecar.istio.io/inject: "false"
+        tcn.kyverno/exception: "true"
     spec:
       serviceAccountName: activescale
       nodeSelector:
@@ -32,8 +33,7 @@ spec:
               cpu: 100m
               memory: 128Mi
             limits:
-              cpu: 100m
-              memory: 128Mi
+              memory: 512Mi
           args:
             - --secure-port=6443
             - --cert-dir=/var/run/serving-cert

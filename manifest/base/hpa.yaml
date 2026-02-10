@@ -16,10 +16,25 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 70
+          averageUtilization: 100
     - type: Resource
       resource:
         name: memory
         target:
           type: Utilization
-          averageUtilization: 50
+          averageUtilization: 100
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 500
+          periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 180
+      policies:
+        - type: Percent
+          value: 30
+          periodSeconds: 30
+      selectPolicy: Max
