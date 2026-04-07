@@ -3,7 +3,7 @@
 ## Features
 
 - Envoy metrics sink (gRPC StreamMetrics) ingestion
-- Pod-level `active_requests` custom metric for HPA
+- Pod-level `active_requests` and `active_connections` custom metrics for HPA
 - Redis/Valkey storage with TTL
 - Optional TLS for Redis (`REDIS_TLS`, `REDIS_CA_FILE`, `REDIS_TLS_INSECURE`)
 - Custom Metrics API via kube-apiserver aggregation
@@ -67,6 +67,12 @@ Activescale receives Envoy gRPC `StreamMetrics` messages. Each message contains 
       ]
     },
     {
+      "name": "listener.0.0.0.0_8080.downstream_cx_active",
+      "metric": [
+        { "gauge": { "value": 12 } }
+      ]
+    },
+    {
       "name": "cluster.xds-grpc;.circuit_breakers.default.cx_pool_open",
       "metric": [
         { "gauge": { "value": 1 } }
@@ -79,9 +85,9 @@ Activescale receives Envoy gRPC `StreamMetrics` messages. Each message contains 
 ### Summary Counters Meaning
 
 - `messages`: number of `StreamMetrics` messages received (one `Recv()` call).
-- `stored`: number of gauge samples stored in Redis (only for the configured `METRIC_NAME`, or auto-detected inbound `downstream_rq_active` when `METRIC_NAME` is empty).
+- `stored_metrics`: number of metric writes stored in Redis for accepted `active_requests` and `active_connections` samples.
 - `dropped_by_ids`: messages dropped because pod identity could not be extracted.
-- `dropped_by_names`: metric families skipped because their name did not match `METRIC_NAME` (or did not match the inbound auto-detect rules).
+- `dropped_by_names`: metric families skipped because their name did not match the `active_requests` or `active_connections` rules.
 
 `stored` does not necessarily equal `messages` because a message can contain multiple metric families or multiple samples, and `dropped_by_names` is counted per metric family, not per message.
 
@@ -97,9 +103,14 @@ Query a metric with a selector:
 kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/active_requests?labelSelector=app=<app>'
 ```
 
+Query active connections with a selector:
+```bash
+kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/active_connections?labelSelector=app=<app>'
+```
+
 Check activescale ingest logs:
 ```bash
-kubectl logs -n ns-observability deploy/activescale | rg -n "metrics batches received|stored active_requests|skipping metric name|missing pod identity"
+kubectl logs -n ns-observability deploy/activescale | rg -n "stored active_requests|stored active_connections|skipping metric name|missing pod identity"
 ```
 
 Enable debug logs and restart:
@@ -115,12 +126,17 @@ istioctl proxy-config bootstrap <pod> -n <ns> | rg -n "envoyMetricsService|metri
 
 ## Notes
 
-Envoy prefixes by stats scope for metrics ending with `downstream_rq_active`.
+Activescale reads both Envoy HTTP connection manager and listener stats, depending on the metric.
 
-- `METRIC_NAME` is optional. When unset or empty, activescale auto-detects inbound-scoped `downstream_rq_active` (e.g., `http.inbound_0.0.0.0_8080;.downstream_rq_active`).
-- When `METRIC_NAME` is set, only the exact match is accepted.
-- Prometheus-style `envoy_http_downstream_rq_active` maps to these scoped names; values can differ by scope.
+- Activescale accepts only inbound-scoped `downstream_rq_active` metrics (e.g., `http.inbound_0.0.0.0_8080;.downstream_rq_active`).
+- Prometheus-style `envoy_http_downstream_rq_active` is an alias across scopes; activescale intentionally reads only the inbound-scoped Envoy metric families.
 - Admin/agent/outbound scopes are ignored by activescale auto-detect:
     - `http.admin.*`: Envoy admin interface (management) traffic
     - `http.agent.*`: Istio/Envoy internal agent traffic
     - `http.outbound_*`: outbound listener stats
+- Activescale sums `listener.*.downstream_cx_active` into `active_connections`, but excludes known infrastructure listeners:
+    - `15000`: Envoy admin port
+    - `15020`: Istio merged metrics port
+    - `15021`: Istio health/readiness port
+    - `15090`: Envoy Prometheus metrics port
+- These listener ports are excluded so `active_connections` reflects service traffic only, not admin, health, or telemetry scrapes.

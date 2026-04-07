@@ -4,8 +4,7 @@ metadata:
   name: activescale-config
   namespace: ns-observability
 data:
-  # Envoy metric name to ingest.
-  # METRIC_NAME: "http.stats.downstream_rq_active" comment out to use auto-detect
+  # Activescale always ingests inbound-scoped downstream_rq_active metrics.
   # Redis key prefix/context, e.g. "activescale:tcn".
   REDIS_CONTEXT: "activescale:tcn"
   # Redis/Valkey address (<host>:<port>).

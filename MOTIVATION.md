@@ -97,6 +97,7 @@ spec:
   proxyStatsMatcher:
     inclusionRegexps:
       - ".*downstream_rq_active.*"
+      - ".*downstream_cx_active.*"
 ```
 
 ## 고가용성(HA)과 Shared Memory의 난제는 어떻게?
@@ -118,7 +119,7 @@ Istio/Envoy와 kube-apiserver용의 2개의 endpoints 노출. 관련 생태계�
 
     1. gRPC StreamMetrics 요청을 받으면
     2. 메시지의 `node.metadata`에서 `POD_NAME` , `POD_NAMESPACE`를 읽고
-    3. `rq_active` 값과 함께 key = `{namespace, pod}`로 Redis에 저장(TTL 포함)
+    3. `rq_active` / `cx_active` 값을 key = `{namespace, pod, metric}`로 Redis에 저장(TTL 포함)
 - **kube-apiserver용 API bizlogic**
 
     https://github.com/kubernetes-sigs/custom-metrics-apiserver

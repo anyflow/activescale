@@ -2,13 +2,15 @@
 package envoy
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"strings"
 
+	podmetrics "activescale/internal/podmetrics"
 	redisstore "activescale/internal/redis"
 
+	dto "github.com/prometheus/client_model/go"
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
 
@@ -21,20 +23,18 @@ type MetricsServer struct {
 	metricsv3.UnimplementedMetricsServiceServer
 	store *redisstore.Store
 
-	logOnce      sync.Once
-	logEvery     time.Duration
-	recvMessages uint64
-	dropByID    uint64
-	dropName     uint64
-	storedGauges uint64
-	metricName   string
+	logOnce       sync.Once
+	logEvery      time.Duration
+	recvMessages  uint64
+	dropByID      uint64
+	dropName      uint64
+	storedMetrics uint64
 }
 
-func NewMetricsServer(store *redisstore.Store, logEvery time.Duration, metricName string) *MetricsServer {
+func NewMetricsServer(store *redisstore.Store, logEvery time.Duration) *MetricsServer {
 	return &MetricsServer{
-		store:      store,
-		logEvery:   logEvery,
-		metricName: metricName,
+		store:    store,
+		logEvery: logEvery,
 	}
 }
 
@@ -71,49 +71,53 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 			continue
 		}
 
-		// rq_active만 관심 (ProxyStatsMatcher로 이미 필터링된다고 가정)
-		var (
-			sumVal   float64
-			hasValue bool
-		)
-		for _, mf := range msg.GetEnvoyMetrics() {
-			// EnvoyMetrics에는 Counter/Gauge/Histogram이 섞여 있음
-			name := mf.GetName()
-			if name == "" {
-				klog.V(4).Info("missing metric family name")
-				continue
-			}
-			// Prefer exact match (config), but allow inbound-scoped variants.
-			// Example: Prometheus shows envoy_http_downstream_rq_active while Envoy stats
-			// exposes the inbound listener scope like "http.inbound_0.0.0.0_8080;.downstream_rq_active".
-			// Without this, we can read only "http.stats.downstream_rq_active" (often 0) and miss real load.
-			nameOK := s.metricName != "" && name == s.metricName
-			if !nameOK && strings.HasSuffix(name, "downstream_rq_active") {
-				nameOK = strings.HasPrefix(name, "http.inbound_")
-			}
-			if !nameOK {
-				klog.V(4).Infof("skipping metric name=%s", name)
-				atomic.AddUint64(&s.dropName, 1)
-				continue
-			}
-			for _, m := range mf.GetMetric() {
-				if g := m.GetGauge(); g != nil {
-					sumVal += g.GetValue()
-					hasValue = true
-				}
-			}
+		metricValues, seenValues, droppedByName := collectMetricValues(msg.GetEnvoyMetrics())
+		if droppedByName > 0 {
+			atomic.AddUint64(&s.dropName, uint64(droppedByName))
 		}
-		if hasValue {
-			// Sum all matching inbound-scoped rq_active metrics so it matches PromQL:
-			// sum by (pod) (envoy_http_downstream_rq_active{pod=...})
-			if err := s.store.SetGauge(ctx, streamNS, streamPod, "active_requests", sumVal); err != nil {
-				klog.Warningf("redis set failed ns=%s pod=%s: %v", streamNS, streamPod, err)
+
+		for _, metricName := range podmetrics.Names() {
+			if !seenValues[metricName] {
 				continue
 			}
-			atomic.AddUint64(&s.storedGauges, 1)
-			klog.V(4).Infof("stored active_requests ns=%s pod=%s value=%.6f", streamNS, streamPod, sumVal)
+			if err := s.store.SetGauge(ctx, streamNS, streamPod, metricName, metricValues[metricName]); err != nil {
+				klog.Warningf("redis set failed ns=%s pod=%s: %v", streamNS, streamPod, err)
+			} else {
+				atomic.AddUint64(&s.storedMetrics, 1)
+				klog.V(4).Infof("stored %s ns=%s pod=%s value=%.6f", metricName, streamNS, streamPod, metricValues[metricName])
+			}
 		}
 	}
+}
+
+func collectMetricValues(metricFamilies []*dto.MetricFamily) (map[string]float64, map[string]bool, int) {
+	totals := make(map[string]float64, len(podmetrics.Names()))
+	seen := make(map[string]bool, len(podmetrics.Names()))
+	droppedByName := 0
+
+	for _, metricFamily := range metricFamilies {
+		name := metricFamily.GetName()
+		if name == "" {
+			klog.V(4).Info("missing metric family name")
+			continue
+		}
+
+		metricName, ok := podmetrics.MatchMetricName(name)
+		if !ok {
+			klog.V(4).Infof("skipping metric name=%s", name)
+			droppedByName++
+			continue
+		}
+
+		for _, metric := range metricFamily.GetMetric() {
+			if gauge := metric.GetGauge(); gauge != nil {
+				totals[metricName] += gauge.GetValue()
+				seen[metricName] = true
+			}
+		}
+	}
+
+	return totals, seen, droppedByName
 }
 
 func (s *MetricsServer) logSummary() {
@@ -124,8 +128,8 @@ func (s *MetricsServer) logSummary() {
 		messages := atomic.SwapUint64(&s.recvMessages, 0)
 		dropByID := atomic.SwapUint64(&s.dropByID, 0)
 		dropName := atomic.SwapUint64(&s.dropName, 0)
-		stored := atomic.SwapUint64(&s.storedGauges, 0)
-		klog.Infof("envoy metrics summary in last %s: messages=%d stored=%d dropped_by_ids=%d dropped_by_names=%d",
+		stored := atomic.SwapUint64(&s.storedMetrics, 0)
+		klog.Infof("envoy metrics summary in last %s: messages=%d stored_metrics=%d dropped_by_ids=%d dropped_by_names=%d",
 			s.logEvery, messages, stored, dropByID, dropName)
 	}
 }

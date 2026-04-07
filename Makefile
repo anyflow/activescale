@@ -44,7 +44,6 @@ docker-run:
 		-e METRIC_TTL=$${METRIC_TTL:-20s} \
 		-e LOG_VERBOSITY=$${LOG_VERBOSITY:-0} \
 		-e LOG_METRICS_SUMMARY_INTERVAL=$${LOG_METRICS_SUMMARY_INTERVAL:-30s} \
-		-e METRIC_NAME=$${METRIC_NAME:-envoy_http_downstream_rq_active} \
 		$(IMAGE)
 
 all: build-pkgs test docker-push

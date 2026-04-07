@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	podmetrics "activescale/internal/podmetrics"
 	redisstore "activescale/internal/redis"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -68,7 +69,7 @@ func (p *PodsProvider) GetMetricBySelector(
 	}
 
 	for _, pod := range pods.Items {
-		val, ok, err := p.store.GetGauge(ctx, namespace, pod.Name, "active_requests")
+		val, ok, err := p.store.GetGauge(ctx, namespace, pod.Name, info.Metric)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +122,7 @@ func (p *PodsProvider) GetMetricByName(
 	})
 	atomic.AddUint64(&p.queryCount, 1)
 	klog.V(2).Infof("custom metrics query namespace=%s pod=%s metric=%s", name.Namespace, name.Name, info.Metric)
-	val, ok, err := p.store.GetGauge(ctx, name.Namespace, name.Name, "active_requests")
+	val, ok, err := p.store.GetGauge(ctx, name.Namespace, name.Name, info.Metric)
 	if err != nil {
 		return nil, err
 	}
@@ -161,11 +162,13 @@ func (p *PodsProvider) logSummary() {
 
 // Framework가 원하는 “지원 metric 선언”
 func (p *PodsProvider) ListAllMetrics() []cmprovider.CustomMetricInfo {
-	return []cmprovider.CustomMetricInfo{
-		{
+	infos := make([]cmprovider.CustomMetricInfo, 0, len(podmetrics.Names()))
+	for _, metricName := range podmetrics.Names() {
+		infos = append(infos, cmprovider.CustomMetricInfo{
 			GroupResource: schema.GroupResource{Group: "", Resource: "pods"},
-			Metric:        "active_requests",
+			Metric:        metricName,
 			Namespaced:    true,
-		},
+		})
 	}
+	return infos
 }

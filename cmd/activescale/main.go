@@ -39,8 +39,6 @@ func main() {
 	defaultRedisAddr := envOr("REDIS_ADDR", "redis:6379")
 	defaultRedisContext := envOr("REDIS_CONTEXT", "activescale:tcn")
 	defaultGRPCPort := envOr("GRPC_PORT", "9000")
-	// Empty means auto-detect inbound-scoped downstream_rq_active metrics.
-	defaultMetricName := os.Getenv("METRIC_NAME")
 	defaultTTL := envDuration("METRIC_TTL", 20*time.Second)
 	defaultSummaryInterval := envDuration("LOG_METRICS_SUMMARY_INTERVAL", 30*time.Second)
 
@@ -59,8 +57,8 @@ func main() {
 	}
 	defer klog.Flush()
 	klog.Infof("starting activescale init")
-	klog.Infof("config grpc_port=%s redis_addr=%s redis_context=%s metric_name=%s ttl=%s log_verbosity=%s summary_interval=%s",
-		grpcPort, redisAddr, redisContext, defaultMetricName, ttl, pflag.CommandLine.Lookup("v").Value.String(), defaultSummaryInterval)
+	klog.Infof("config grpc_port=%s redis_addr=%s redis_context=%s ttl=%s log_verbosity=%s summary_interval=%s",
+		grpcPort, redisAddr, redisContext, ttl, pflag.CommandLine.Lookup("v").Value.String(), defaultSummaryInterval)
 
 	// redis
 	klog.Infof("initializing redis client")
@@ -121,7 +119,7 @@ func main() {
 		}
 		klog.Infof("envoy metrics gRPC port bound addr=:%s", grpcPort)
 		gs := grpc.NewServer()
-		envoy.NewMetricsServer(store, defaultSummaryInterval, defaultMetricName).Register(gs)
+		envoy.NewMetricsServer(store, defaultSummaryInterval).Register(gs)
 		klog.Infof("envoy metrics gRPC listening on %s", ":"+grpcPort)
 		if err := gs.Serve(lis); err != nil {
 			klog.Fatalf("grpc serve: %v", err)

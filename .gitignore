@@ -1,4 +1,5 @@
 .gocache/
+.omx/
 bin/
 dist/
 *.log
