@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ns-observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: activescale-config
+  namespace: ns-observability
+data:
+  REDIS_CONTEXT: "activescale:tcn"
+  REDIS_ADDR: "redis.custom-metrics.svc.cluster.local:6379"
+  REDIS_TLS: "true"
+  REDIS_CLUSTER: "false"
+  GRPC_PORT: "9000"
+  GRPC_MAX_RECV_MSG_SIZE: "33554432"
+  METRIC_TTL: "20s"
+  LOG_VERBOSITY: "0"
+  LOG_METRICS_SUMMARY_INTERVAL: "30s"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: activescale-serving-cert
+  namespace: ns-observability
+type: kubernetes.io/tls
+stringData:
+  tls.crt: |
+    REPLACE_WITH_SERVER_CERT
+  tls.key: |
+    REPLACE_WITH_SERVER_KEY
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: activescale
+  namespace: ns-observability
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: activescale
+  template:
+    metadata:
+      labels:
+        app: activescale
+      annotations:
+        image-refreshed-at: "1970-01-01T09:00:00+09:00"
+    spec:
+      serviceAccountName: activescale
+      containers:
+        - name: activescale
+          image: ghcr.io/anyflow/activescale:latest
+          imagePullPolicy: Always
+          args:
+            - --secure-port=6443
+            - --cert-dir=/var/run/serving-cert
+            - --tls-cert-file=/var/run/serving-cert/tls.crt
+            - --tls-private-key-file=/var/run/serving-cert/tls.key
+          envFrom:
+            - configMapRef:
+                name: activescale-config
+          ports:
+            - name: https
+              containerPort: 6443
+            - name: envoy-grpc
+              containerPort: 9000
+            - name: health
+              containerPort: 18080
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /var/run/serving-cert
+      volumes:
+        - name: serving-cert
+          secret:
+            secretName: activescale-serving-cert
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: activescale
+  namespace: ns-observability
+spec:
+  selector:
+    app: activescale
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+    - name: envoy-grpc
+      port: 9000
+      targetPort: envoy-grpc
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta2.custom.metrics.k8s.io
+spec:
+  group: custom.metrics.k8s.io
+  version: v1beta2
+  service:
+    name: activescale
+    namespace: ns-observability
+  groupPriorityMinimum: 100
+  versionPriority: 200
+  caBundle: REPLACE_WITH_BASE64_SERVER_CERT
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-svc-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-svc
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: active_requests
+        target:
+          type: AverageValue
+          averageValue: "10"
+    - type: Pods
+      pods:
+        metric:
+          name: active_connections
+        target:
+          type: AverageValue
+          averageValue: "20"

@@ -8,10 +8,15 @@
 - Optional TLS for Redis (`REDIS_TLS`, `REDIS_CA_FILE`, `REDIS_TLS_INSECURE`)
 - Configurable max gRPC receive size for Envoy batches (`GRPC_MAX_RECV_MSG_SIZE`, default `32 MiB`)
 - Custom Metrics API via kube-apiserver aggregation
-- Kustomize base + environment overlays (`manifest/*`)
-- ArgoCD ApplicationSet for multi-environment sync
 - Klog-based logging with verbosity control (`LOG_VERBOSITY`)
 - Periodic summary logs for Envoy ingest and API responses
+
+## Metrics
+
+- `active_requests`: inbound Envoy HTTP request concurrency from `downstream_rq_active`
+- `active_connections`: inbound Envoy listener connection concurrency from `downstream_cx_active`
+
+Both metrics are exposed as pod-scoped custom metrics for HPA.
 
 ## Architecture
 
@@ -129,6 +134,9 @@ Confirm Envoy bootstrap includes the metrics service:
 istioctl proxy-config bootstrap <pod> -n <ns> | rg -n "envoyMetricsService|metrics_service|envoy_grpc|cluster_name|activescale|9000"
 ```
 
+A minimal Kubernetes reference example lives in
+`k8s-manifest-example.yaml`.
+
 ## Notes
 
 Activescale reads both Envoy HTTP connection manager and listener stats, depending on the metric.
@@ -145,12 +153,3 @@ Activescale reads both Envoy HTTP connection manager and listener stats, dependi
     - `15021`: Istio health/readiness port
     - `15090`: Envoy Prometheus metrics port
 - These listener ports are excluded so `active_connections` reflects service traffic only, not admin, health, or telemetry scrapes.
-
-## TLS Layout
-
-Aggregated API TLS is committed per overlay.
-
-Overlay mapping:
-
-- Each overlay carries its own `serving-cert-secret.yaml`
-- Each overlay carries its own `apiservice.yaml`

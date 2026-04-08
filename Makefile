@@ -1,7 +1,7 @@
 .PHONY: build build-pkgs test run deps-update docker-build docker-push docker-run update-image-refreshed-at all
 
-IMAGE_REFRESHED_AT_FILE ?= manifest/base/deployment.yaml
-IMAGE_REFRESHED_AT_KEY ?= activescale.thinq.io/image-refreshed-at
+IMAGE_REFRESHED_AT_FILE ?= ../activescale-deployment/base/deployment.yaml
+IMAGE_REFRESHED_AT_KEY ?= image-refreshed-at
 
 build:
 	# Build binary into ./bin
@@ -33,6 +33,10 @@ docker-build:
 
 update-image-refreshed-at:
 	# Refresh rollout annotation in KST so GitOps sees a manifest diff after image push.
+	@if [ ! -f "$(IMAGE_REFRESHED_AT_FILE)" ]; then \
+		echo "update-image-refreshed-at: $(IMAGE_REFRESHED_AT_FILE) not found, skipping"; \
+		exit 0; \
+	fi; \
 	TIMESTAMP=$$(TZ=Asia/Seoul date '+%Y-%m-%dT%H:%M:%S+09:00'); \
 	awk -v ts="$$TIMESTAMP" -v key='$(IMAGE_REFRESHED_AT_KEY)' '{ if (index($$0, key)) print "        " key ": \"" ts "\""; else print }' $(IMAGE_REFRESHED_AT_FILE) > $(IMAGE_REFRESHED_AT_FILE).tmp && mv $(IMAGE_REFRESHED_AT_FILE).tmp $(IMAGE_REFRESHED_AT_FILE)
 
