@@ -83,6 +83,10 @@ Activescale receives Envoy gRPC `StreamMetrics` messages. Each message contains 
 }
 ```
 
+Pod identity extraction prefers `node.metadata.NAME` and `node.metadata.NAMESPACE`.
+If either metadata field is missing, activescale falls back to parsing the Istio-style `node.id`
+(`sidecar~<ip>~<pod>.<namespace>~<namespace>.svc.cluster.local`).
+
 ### Summary Counters Meaning
 
 - `messages`: number of `StreamMetrics` messages received (one `Recv()` call).

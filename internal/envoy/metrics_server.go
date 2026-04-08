@@ -12,6 +12,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/structpb"
 	"k8s.io/klog/v2"
 
 	// Envoy go-control-plane (예시 import)
@@ -138,7 +139,12 @@ func extractPodIdentity(node *corev3.Node) (namespace, pod string) {
 	if node == nil {
 		return "", ""
 	}
-	// Istio node.id 형식: sidecar~<ip>~<pod>.<namespace>~<namespace>.svc.cluster.local
+
+	if metadataNamespace, metadataPod := podIdentityFromMetadata(node.GetMetadata()); metadataNamespace != "" && metadataPod != "" {
+		return metadataNamespace, metadataPod
+	}
+
+	// Istio node.id 형식 fallback: sidecar~<ip>~<pod>.<namespace>~<namespace>.svc.cluster.local
 	id := node.GetId()
 	if id == "" {
 		return "", ""
@@ -161,5 +167,30 @@ func extractPodIdentity(node *corev3.Node) (namespace, pod string) {
 	if pod == "" || namespace == "" {
 		return "", ""
 	}
+	return namespace, pod
+}
+
+func podIdentityFromMetadata(metadata *structpb.Struct) (namespace, pod string) {
+	if metadata == nil {
+		return "", ""
+	}
+
+	fields := metadata.GetFields()
+	if len(fields) == 0 {
+		return "", ""
+	}
+
+	nameField, hasName := fields["NAME"]
+	namespaceField, hasNamespace := fields["NAMESPACE"]
+	if !hasName || !hasNamespace {
+		return "", ""
+	}
+
+	pod = strings.TrimSpace(nameField.GetStringValue())
+	namespace = strings.TrimSpace(namespaceField.GetStringValue())
+	if pod == "" || namespace == "" {
+		return "", ""
+	}
+
 	return namespace, pod
 }

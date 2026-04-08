@@ -95,9 +95,10 @@ func (p *PodsProvider) GetMetricBySelector(
 	}
 
 	if len(out.Items) == 0 {
-		// Returning an error makes the API respond with 5xx, so HPA treats metrics as unavailable.
+		// Return a typed not-found so the aggregation layer treats this as missing data,
+		// not as an internal provider failure.
 		klog.V(2).Infof("custom metrics result empty namespace=%s metric=%s selector=%s", namespace, info.Metric, selector.String())
-		return nil, fmt.Errorf("no metrics available for selector")
+		return nil, cmprovider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, "*", selector)
 	}
 
 	atomic.AddUint64(&p.resultCount, uint64(len(out.Items)))
@@ -127,9 +128,10 @@ func (p *PodsProvider) GetMetricByName(
 		return nil, err
 	}
 	if !ok {
-		// Returning an error makes the API respond with 5xx, so HPA treats metrics as unavailable.
+		// Return a typed not-found so the aggregation layer treats this as missing data,
+		// not as an internal provider failure.
 		klog.V(2).Infof("custom metrics result empty namespace=%s pod=%s metric=%s", name.Namespace, name.Name, info.Metric)
-		return nil, fmt.Errorf("no metrics available for pod")
+		return nil, cmprovider.NewMetricNotFoundForError(info.GroupResource, info.Metric, name.Name)
 	}
 
 	now := metav1.NewTime(time.Now())

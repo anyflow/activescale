@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       annotations:
-        activescale.thinq.io/image-refreshed-at: "2026-04-08T14:17:24+09:00"
+        activescale.thinq.io/image-refreshed-at: "2026-04-08T14:31:29+09:00"
       labels:
         thinq.service: activescale
         app: activescale
@@ -31,6 +31,7 @@ spec:
       containers:
         - name: activescale
           image: ghcr.io/anyflow/activescale:latest
+          imagePullPolicy: Always
           resources:
             requests:
               cpu: 50m
