@@ -11,6 +11,5 @@ spec:
   service:
     name: activescale
     namespace: ns-observability
-  insecureSkipTLSVerify: true
   groupPriorityMinimum: 100
   versionPriority: 200

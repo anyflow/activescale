@@ -1,4 +1,7 @@
-.PHONY: build build-pkgs test run deps-update docker-build docker-push docker-run all
+.PHONY: build build-pkgs test run deps-update docker-build docker-push docker-run update-image-refreshed-at all
+
+IMAGE_REFRESHED_AT_FILE ?= manifest/base/deployment.yaml
+IMAGE_REFRESHED_AT_KEY ?= activescale.thinq.io/image-refreshed-at
 
 build:
 	# Build binary into ./bin
@@ -28,7 +31,12 @@ docker-build:
 	# Build single-arch image locally
 	docker buildx build --platform $(LOCAL_PLATFORM) -t $(IMAGE) --load .
 
-docker-push:
+update-image-refreshed-at:
+	# Refresh rollout annotation in KST so GitOps sees a manifest diff after image push.
+	timestamp=$$(TZ=Asia/Seoul date '+%Y-%m-%dT%H:%M:%S%z' | sed 's/\(..\)$$/:\\1/'); \
+	perl -0pi -e 's#($(IMAGE_REFRESHED_AT_KEY):\\s*\")[^\"]*(\")#$$1'"$$timestamp"'$$2#' $(IMAGE_REFRESHED_AT_FILE)
+
+docker-push: update-image-refreshed-at
 	# Build and push multi-arch image
 	docker buildx build --platform $(PLATFORMS) -t $(IMAGE) --push .
 
