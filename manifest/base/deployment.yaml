@@ -65,4 +65,5 @@ spec:
               mountPath: /var/run/serving-cert
       volumes:
         - name: serving-cert
-          emptyDir: {} # dev/POC용 (prod에서는 cert-manager secret 권장)
+          secret:
+            secretName: activescale-serving-cert

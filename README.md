@@ -140,3 +140,12 @@ Activescale reads both Envoy HTTP connection manager and listener stats, dependi
     - `15021`: Istio health/readiness port
     - `15090`: Envoy Prometheus metrics port
 - These listener ports are excluded so `active_connections` reflects service traffic only, not admin, health, or telemetry scrapes.
+
+## TLS Layout
+
+Aggregated API TLS is committed per overlay.
+
+Overlay mapping:
+
+- Each overlay carries its own `serving-cert-secret.yaml`
+- Each overlay carries its own `apiservice.yaml`

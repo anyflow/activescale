@@ -3,6 +3,8 @@ kind: Kustomization
 
 resources:
   - ../base
+  - serving-cert-secret.yaml
 
 patches:
   - path: configmap.yaml
+  - path: apiservice.yaml
