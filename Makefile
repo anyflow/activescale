@@ -33,10 +33,10 @@ docker-build:
 
 update-image-refreshed-at:
 	# Refresh rollout annotation in KST so GitOps sees a manifest diff after image push.
-	timestamp=$$(TZ=Asia/Seoul date '+%Y-%m-%dT%H:%M:%S%z' | sed 's/\(..\)$$/:\\1/'); \
-	perl -0pi -e 's#($(IMAGE_REFRESHED_AT_KEY):\\s*\")[^\"]*(\")#$$1'"$$timestamp"'$$2#' $(IMAGE_REFRESHED_AT_FILE)
+	TIMESTAMP=$$(TZ=Asia/Seoul date '+%Y-%m-%dT%H:%M:%S+09:00'); \
+	awk -v ts="$$TIMESTAMP" -v key='$(IMAGE_REFRESHED_AT_KEY)' '{ if (index($$0, key)) print "        " key ": \"" ts "\""; else print }' $(IMAGE_REFRESHED_AT_FILE) > $(IMAGE_REFRESHED_AT_FILE).tmp && mv $(IMAGE_REFRESHED_AT_FILE).tmp $(IMAGE_REFRESHED_AT_FILE)
 
-docker-push: update-image-refreshed-at
+docker-push:
 	# Build and push multi-arch image
 	docker buildx build --platform $(PLATFORMS) -t $(IMAGE) --push .
 
@@ -54,5 +54,5 @@ docker-run:
 		-e LOG_METRICS_SUMMARY_INTERVAL=$${LOG_METRICS_SUMMARY_INTERVAL:-30s} \
 		$(IMAGE)
 
-all: build-pkgs test docker-push
-	# Run build, test, and push image
+all: build-pkgs test docker-push update-image-refreshed-at
+	# Run build, test, push image and update deployment annotation

@@ -6,6 +6,7 @@
 - Pod-level `active_requests` and `active_connections` custom metrics for HPA
 - Redis/Valkey storage with TTL
 - Optional TLS for Redis (`REDIS_TLS`, `REDIS_CA_FILE`, `REDIS_TLS_INSECURE`)
+- Configurable max gRPC receive size for Envoy batches (`GRPC_MAX_RECV_MSG_SIZE`, default `32 MiB`)
 - Custom Metrics API via kube-apiserver aggregation
 - Kustomize base + environment overlays (`manifest/*`)
 - ArgoCD ApplicationSet for multi-environment sync

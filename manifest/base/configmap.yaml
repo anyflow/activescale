@@ -16,6 +16,8 @@ data:
   REDIS_CLUSTER: "false"
   # Envoy gRPC sink listen port.
   GRPC_PORT: "9000"
+  # Default 32 MiB max gRPC receive message size for Envoy StreamMetrics batches.
+  GRPC_MAX_RECV_MSG_SIZE: "33554432"
   # Metric TTL duration.
   METRIC_TTL: "20s"
   # Klog verbosity: 0=info, 1-3=more detail, 4=debug (e.g., per-pod values).

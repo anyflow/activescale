@@ -39,6 +39,7 @@ func main() {
 	defaultRedisAddr := envOr("REDIS_ADDR", "redis:6379")
 	defaultRedisContext := envOr("REDIS_CONTEXT", "activescale:tcn")
 	defaultGRPCPort := envOr("GRPC_PORT", "9000")
+	defaultGRPCMaxRecvMsgSize := envInt("GRPC_MAX_RECV_MSG_SIZE", 32*1024*1024)
 	defaultTTL := envDuration("METRIC_TTL", 20*time.Second)
 	defaultSummaryInterval := envDuration("LOG_METRICS_SUMMARY_INTERVAL", 30*time.Second)
 
@@ -57,8 +58,8 @@ func main() {
 	}
 	defer klog.Flush()
 	klog.Infof("starting activescale init")
-	klog.Infof("config grpc_port=%s redis_addr=%s redis_context=%s ttl=%s log_verbosity=%s summary_interval=%s",
-		grpcPort, redisAddr, redisContext, ttl, pflag.CommandLine.Lookup("v").Value.String(), defaultSummaryInterval)
+	klog.Infof("config grpc_port=%s grpc_max_recv_msg_size=%d redis_addr=%s redis_context=%s ttl=%s log_verbosity=%s summary_interval=%s",
+		grpcPort, defaultGRPCMaxRecvMsgSize, redisAddr, redisContext, ttl, pflag.CommandLine.Lookup("v").Value.String(), defaultSummaryInterval)
 
 	// redis
 	klog.Infof("initializing redis client")
@@ -118,7 +119,9 @@ func main() {
 			klog.Fatalf("grpc listen: %v", err)
 		}
 		klog.Infof("envoy metrics gRPC port bound addr=:%s", grpcPort)
-		gs := grpc.NewServer()
+		gs := grpc.NewServer(
+			grpc.MaxRecvMsgSize(defaultGRPCMaxRecvMsgSize),
+		)
 		envoy.NewMetricsServer(store, defaultSummaryInterval).Register(gs)
 		klog.Infof("envoy metrics gRPC listening on %s", ":"+grpcPort)
 		if err := gs.Serve(lis); err != nil {
@@ -202,6 +205,18 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	parsed, err := time.ParseDuration(v)
+	if err != nil {
+		klog.Fatalf("invalid %s: %v", key, err)
+	}
+	return parsed
+}
+
+func envInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(v)
 	if err != nil {
 		klog.Fatalf("invalid %s: %v", key, err)
 	}
