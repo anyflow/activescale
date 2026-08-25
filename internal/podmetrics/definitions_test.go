@@ -2,7 +2,20 @@ package podmetrics
 
 import "testing"
 
-func TestMatchMetricNameForActiveRequests(t *testing.T) {
+func TestNames(t *testing.T) {
+	got := Names()
+	want := []string{InboundActiveRequests, OutboundActiveRequests, ActiveConnections}
+	if len(got) != len(want) {
+		t.Fatalf("Names() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Names() = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestMatchMetricNameForRequestMetrics(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -14,7 +27,13 @@ func TestMatchMetricNameForActiveRequests(t *testing.T) {
 		{
 			name:            "accepts inbound downstream active requests",
 			envoyMetricName: "http.inbound_0.0.0.0_8080;.downstream_rq_active",
-			wantMetricName:  ActiveRequests,
+			wantMetricName:  InboundActiveRequests,
+			wantMatched:     true,
+		},
+		{
+			name:            "accepts outbound downstream active requests",
+			envoyMetricName: "http.outbound_0.0.0.0_8443;.downstream_rq_active",
+			wantMetricName:  OutboundActiveRequests,
 			wantMatched:     true,
 		},
 		{
@@ -25,11 +44,6 @@ func TestMatchMetricNameForActiveRequests(t *testing.T) {
 		{
 			name:            "rejects stats scope",
 			envoyMetricName: "http.stats.downstream_rq_active",
-			wantMatched:     false,
-		},
-		{
-			name:            "rejects outbound scope",
-			envoyMetricName: "http.outbound_0.0.0.0_8080;.downstream_rq_active",
 			wantMatched:     false,
 		},
 		{
@@ -75,16 +89,39 @@ func TestMatchMetricNameForActiveConnections(t *testing.T) {
 		wantMatched     bool
 	}{
 		{
-			name:            "accepts service listener port",
-			envoyMetricName: "listener.0.0.0.0_8080.downstream_cx_active",
+			name:            "accepts wildcard service listener",
+			envoyMetricName: "listener.0.0.0.0_8443.downstream_cx_active",
 			wantMetricName:  ActiveConnections,
 			wantMatched:     true,
 		},
 		{
-			name:            "accepts non wildcard service listener",
-			envoyMetricName: "listener.172.20.10.15_8443.downstream_cx_active",
+			name:            "accepts address-specific service listener on another port",
+			envoyMetricName: "listener.172.20.10.15_8080.downstream_cx_active",
 			wantMetricName:  ActiveConnections,
 			wantMatched:     true,
+		},
+		{
+			name:            "accepts outbound traffic listener",
+			envoyMetricName: "listener.0.0.0.0_15001.downstream_cx_active",
+			wantMetricName:  ActiveConnections,
+			wantMatched:     true,
+		},
+		{
+			name:            "accepts inbound traffic listener",
+			envoyMetricName: "listener.0.0.0.0_15006.downstream_cx_active",
+			wantMetricName:  ActiveConnections,
+			wantMatched:     true,
+		},
+		{
+			name:            "accepts hbone traffic listener",
+			envoyMetricName: "listener.0.0.0.0_15008.downstream_cx_active",
+			wantMetricName:  ActiveConnections,
+			wantMatched:     true,
+		},
+		{
+			name:            "rejects worker listener breakdown",
+			envoyMetricName: "listener.0.0.0.0_8443.worker_0.downstream_cx_active",
+			wantMatched:     false,
 		},
 		{
 			name:            "rejects admin listener",
@@ -93,12 +130,17 @@ func TestMatchMetricNameForActiveConnections(t *testing.T) {
 		},
 		{
 			name:            "rejects admin main thread listener",
+			envoyMetricName: "listener.admin.main_thread.downstream_cx_active",
+			wantMatched:     false,
+		},
+		{
+			name:            "rejects legacy admin main thread listener",
 			envoyMetricName: "listener.admin_main_thread.downstream_cx_active",
 			wantMatched:     false,
 		},
 		{
-			name:            "rejects worker listener breakdown",
-			envoyMetricName: "listener.worker_0.downstream_cx_active",
+			name:            "rejects worker breakdown on infrastructure listener",
+			envoyMetricName: "listener.0.0.0.0_15090.worker_6.downstream_cx_active",
 			wantMatched:     false,
 		},
 		{
@@ -107,13 +149,28 @@ func TestMatchMetricNameForActiveConnections(t *testing.T) {
 			wantMatched:     false,
 		},
 		{
-			name:            "rejects health port",
-			envoyMetricName: "listener.0.0.0.0_15021.downstream_cx_active",
+			name:            "rejects failure detection port",
+			envoyMetricName: "listener.0.0.0.0_15002.downstream_cx_active",
+			wantMatched:     false,
+		},
+		{
+			name:            "rejects debug port",
+			envoyMetricName: "listener.0.0.0.0_15004.downstream_cx_active",
 			wantMatched:     false,
 		},
 		{
 			name:            "rejects merged metrics port",
 			envoyMetricName: "listener.0.0.0.0_15020.downstream_cx_active",
+			wantMatched:     false,
+		},
+		{
+			name:            "rejects health port",
+			envoyMetricName: "listener.0.0.0.0_15021.downstream_cx_active",
+			wantMatched:     false,
+		},
+		{
+			name:            "rejects dns capture port",
+			envoyMetricName: "listener.0.0.0.0_15053.downstream_cx_active",
 			wantMatched:     false,
 		},
 		{
@@ -123,7 +180,7 @@ func TestMatchMetricNameForActiveConnections(t *testing.T) {
 		},
 		{
 			name:            "rejects different metric family",
-			envoyMetricName: "listener.0.0.0.0_8080.downstream_rq_active",
+			envoyMetricName: "listener.0.0.0.0_8443.downstream_rq_active",
 			wantMatched:     false,
 		},
 	}

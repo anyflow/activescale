@@ -1,0 +1,125 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Test
+        run: go test ./...
+
+      - name: Determine version
+        id: version
+        env:
+          # Existing unversioned GHCR latest was built from BASE_REVISION.
+          BASE_VERSION: 0.0.0
+          BASE_REVISION: 7867f8a6c56e1f1424dfb4127c4d9614f0d766a0
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+
+          last_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n1)"
+          if [ -n "${last_tag}" ]; then
+            current_version="${last_tag#v}"
+            commit_range="${last_tag}..HEAD"
+          else
+            git merge-base --is-ancestor "${BASE_REVISION}" HEAD
+            current_version="${BASE_VERSION}"
+            commit_range="${BASE_REVISION}..HEAD"
+          fi
+
+          IFS=. read -r major minor patch extra <<< "${current_version}"
+          test -n "${major}" -a -n "${minor}" -a -n "${patch}" -a -z "${extra:-}"
+          commit_messages="$(git log --no-merges --format='%s%n%b' "${commit_range}")"
+
+          bump=none
+          if printf '%s\n' "${commit_messages}" | grep -Eq '(^|[[:space:]])BREAKING[ -]CHANGE[[:space:]]*:|^[[:alnum:]-]+(\([^)]*\))?!:'; then
+            bump=major
+          elif printf '%s\n' "${commit_messages}" | grep -Eq '^feat(\([^)]*\))?:'; then
+            bump=minor
+          elif printf '%s\n' "${commit_messages}" | grep -Eq '^(fix|perf)(\([^)]*\))?:'; then
+            bump=patch
+          fi
+
+          if [ "${bump}" = none ]; then
+            echo "No release-worthy Conventional Commit found since ${last_tag:-${BASE_REVISION}}"
+            echo 'release=false' >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          case "${bump}" in
+            major) next_version="$((10#${major} + 1)).0.0" ;;
+            minor) next_version="${major}.$((10#${minor} + 1)).0" ;;
+            patch) next_version="${major}.${minor}.$((10#${patch} + 1))" ;;
+          esac
+
+          if git rev-parse -q --verify "refs/tags/v${next_version}" >/dev/null; then
+            echo "Tag v${next_version} already exists" >&2
+            exit 1
+          fi
+
+          echo 'release=true' >> "${GITHUB_OUTPUT}"
+          echo "version=${next_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up QEMU
+        if: steps.version.outputs.release == 'true'
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        if: steps.version.outputs.release == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: steps.version.outputs.release == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish image
+        if: steps.version.outputs.release == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/anyflow/activescale:${{ steps.version.outputs.version }}
+            ghcr.io/anyflow/activescale:latest
+
+      - name: Create Git tag
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "v${VERSION}" -m "activescale ${VERSION}"
+          git push origin "v${VERSION}"

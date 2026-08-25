@@ -3,8 +3,9 @@ package podmetrics
 import "strings"
 
 const (
-	ActiveRequests    = "active_requests"
-	ActiveConnections = "active_connections"
+	InboundActiveRequests  = "inbound_active_requests"
+	OutboundActiveRequests = "outbound_active_requests"
+	ActiveConnections      = "active_connections"
 )
 
 type definition struct {
@@ -14,8 +15,12 @@ type definition struct {
 
 var definitions = []definition{
 	{
-		name:    ActiveRequests,
+		name:    InboundActiveRequests,
 		matches: isInboundActiveRequestMetric,
+	},
+	{
+		name:    OutboundActiveRequests,
+		matches: isOutboundActiveRequestMetric,
 	},
 	{
 		name:    ActiveConnections,
@@ -41,7 +46,11 @@ func MatchMetricName(envoyMetricName string) (string, bool) {
 }
 
 func isInboundActiveRequestMetric(name string) bool {
-	return strings.HasPrefix(name, "http.inbound_") && strings.HasSuffix(name, "downstream_rq_active")
+	return strings.HasPrefix(name, "http.inbound_") && strings.HasSuffix(name, ".downstream_rq_active")
+}
+
+func isOutboundActiveRequestMetric(name string) bool {
+	return strings.HasPrefix(name, "http.outbound_") && strings.HasSuffix(name, ".downstream_rq_active")
 }
 
 func isServiceActiveConnectionMetric(name string) bool {
@@ -49,12 +58,12 @@ func isServiceActiveConnectionMetric(name string) bool {
 		return false
 	}
 
-	listenerName := strings.TrimPrefix(name, "listener.")
-	listenerName = strings.TrimSuffix(listenerName, ".downstream_cx_active")
-	if listenerName == "" {
-		return false
-	}
-	if listenerName == "admin" || listenerName == "admin_main_thread" || strings.HasPrefix(listenerName, "worker_") {
+	listenerName := strings.TrimSuffix(strings.TrimPrefix(name, "listener."), ".downstream_cx_active")
+	if listenerName == "" ||
+		listenerName == "admin" ||
+		strings.HasPrefix(listenerName, "admin.") ||
+		strings.HasPrefix(listenerName, "admin_") ||
+		strings.Contains(listenerName, ".worker_") {
 		return false
 	}
 
@@ -63,8 +72,21 @@ func isServiceActiveConnectionMetric(name string) bool {
 		return false
 	}
 	port := listenerName[separator+1:]
+	// Ignore Istio-reserved non-traffic listeners. Traffic ports 15001, 15006, and 15008 remain eligible.
 	switch port {
-	case "15000", "15020", "15021", "15090":
+	case "15000": // Envoy admin commands and diagnostics.
+		return false
+	case "15002": // Istio failure-detection listener.
+		return false
+	case "15004": // Istio proxy debug endpoint.
+		return false
+	case "15020": // Merged Prometheus telemetry.
+		return false
+	case "15021": // Istio health checks.
+		return false
+	case "15053": // Istio DNS capture.
+		return false
+	case "15090": // Envoy Prometheus telemetry.
 		return false
 	default:
 		return true

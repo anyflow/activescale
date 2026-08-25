@@ -1,22 +1,47 @@
 # Activescale
 
+Activescale enables fast Kubernetes autoscaling with push-based, per-pod active request and connection metrics from Envoy.
+
+`Active` means currently in flight: requests not yet completed and connections still open. By Little's Law (`L = λW`), active requests reflect both request rate and latency.
+
+Unlike CPU and memory metrics collected through metrics-server, Envoy pushes active signals directly to Activescale, avoiding extra scrape and polling delays.
+
 ## Features
 
-- Envoy metrics sink (gRPC StreamMetrics) ingestion
-- Pod-level `active_requests` and `active_connections` custom metrics for HPA
-- Redis/Valkey storage with TTL
-- Optional TLS for Redis (`REDIS_TLS`, `REDIS_CA_FILE`, `REDIS_TLS_INSECURE`)
-- Configurable max gRPC receive size for Envoy batches (`GRPC_MAX_RECV_MSG_SIZE`, default `32 MiB`)
-- Custom Metrics API via kube-apiserver aggregation
-- Klog-based logging with verbosity control (`LOG_VERBOSITY`)
-- Periodic summary logs for Envoy ingest and API responses
+- Active request concurrency as an autoscaling signal that reflects both request rate and request latency
+- Push-based Envoy `StreamMetrics` ingestion without intermediary Prometheus scrape and KEDA polling delays
+- Pod-scoped Custom Metrics API values that HPA averages across workload replicas
+- Direction-aware `inbound_active_requests` and `outbound_active_requests`, plus aggregate `active_connections`
+- Stateless high availability with shared Redis/Valkey state and TTL-based stale metric expiry
+- Redis standalone and Cluster modes with optional TLS
+- Configurable gRPC receive limit and Klog-based summary and debug logging
 
 ## Metrics
 
-- `active_requests`: inbound Envoy HTTP request concurrency from `downstream_rq_active`
-- `active_connections`: inbound Envoy listener connection concurrency from `downstream_cx_active`
+- `inbound_active_requests`: inbound in-flight HTTP requests from `http.inbound_*.downstream_rq_active`
+- `outbound_active_requests`: outbound in-flight HTTP requests from `http.outbound_*.downstream_rq_active`
+- `active_connections`: open connections across aggregate Envoy service listeners from `listener.<address>.downstream_cx_active`
 
-Both metrics are exposed as pod-scoped custom metrics for HPA.
+All metrics are exposed as pod-scoped custom metrics for HPA.
+
+### Choosing a request metric
+
+Choose the metric based on the role of the workload being scaled.
+
+| Workload | Metric | When to use |
+| --- | --- | --- |
+| Application or API service | `inbound_active_requests` | Use for a workload that receives and processes client requests. This is the default choice for typical services. |
+| Dedicated gateway or proxy | `outbound_active_requests` | Use when the workload primarily forwards client requests to upstream services and `inbound_active_requests` is unavailable or does not reflect the traffic. |
+
+Do not configure both metrics as a fallback. For a normal application, outbound requests usually represent calls to dependencies and can trigger scaling for unrelated downstream traffic.
+
+If the workload role is unclear, generate a small amount of client traffic and query both metrics. Select the one that returns per-pod values and increases with the client request concurrency being tested.
+
+```bash
+kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/inbound_active_requests?labelSelector=<selector>'
+
+kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/outbound_active_requests?labelSelector=<selector>'
+```
 
 ## Architecture
 
@@ -73,6 +98,12 @@ Activescale receives Envoy gRPC `StreamMetrics` messages. Each message contains 
       ]
     },
     {
+      "name": "http.outbound_0.0.0.0_8080;.downstream_rq_active",
+      "metric": [
+        { "gauge": { "value": 4 } }
+      ]
+    },
+    {
       "name": "listener.0.0.0.0_8080.downstream_cx_active",
       "metric": [
         { "gauge": { "value": 12 } }
@@ -95,9 +126,9 @@ If either metadata field is missing, activescale falls back to parsing the Istio
 ### Summary Counters Meaning
 
 - `messages`: number of `StreamMetrics` messages received (one `Recv()` call).
-- `stored_metrics`: number of metric writes stored in Redis for accepted `active_requests` and `active_connections` samples.
+- `stored_metrics`: number of metric writes stored in Redis for accepted request and connection samples.
 - `dropped_by_ids`: messages dropped because pod identity could not be extracted.
-- `dropped_by_names`: metric families skipped because their name did not match the `active_requests` or `active_connections` rules.
+- `dropped_by_names`: metric families skipped because their name did not match the inbound, outbound, or aggregate service listener rules.
 
 `stored` does not necessarily equal `messages` because a message can contain multiple metric families or multiple samples, and `dropped_by_names` is counted per metric family, not per message.
 
@@ -108,9 +139,14 @@ Check Custom Metrics API is registered:
 kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2'
 ```
 
-Query a metric with a selector:
+Query inbound active requests with a selector:
 ```bash
-kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/active_requests?labelSelector=app=<app>'
+kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/inbound_active_requests?labelSelector=app=<app>'
+```
+
+Query outbound active requests with a selector:
+```bash
+kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/outbound_active_requests?labelSelector=app=<app>'
 ```
 
 Query active connections with a selector:
@@ -120,7 +156,7 @@ kubectl get --raw '/apis/custom.metrics.k8s.io/v1beta2/namespaces/<ns>/pods/*/ac
 
 Check activescale ingest logs:
 ```bash
-kubectl logs -n ns-observability deploy/activescale | rg -n "stored active_requests|stored active_connections|skipping metric name|missing pod identity"
+kubectl logs -n ns-observability deploy/activescale | rg -n "stored (inbound_active_requests|outbound_active_requests|active_connections)|skipping metric name|missing pod identity"
 ```
 
 Enable debug logs and restart:
@@ -141,15 +177,8 @@ A minimal Kubernetes reference example lives in
 
 Activescale reads both Envoy HTTP connection manager and listener stats, depending on the metric.
 
-- Activescale accepts only inbound-scoped `downstream_rq_active` metrics (e.g., `http.inbound_0.0.0.0_8080;.downstream_rq_active`).
-- Prometheus-style `envoy_http_downstream_rq_active` is an alias across scopes; activescale intentionally reads only the inbound-scoped Envoy metric families.
-- Admin/agent/outbound scopes are ignored by activescale auto-detect:
-    - `http.admin.*`: Envoy admin interface (management) traffic
-    - `http.agent.*`: Istio/Envoy internal agent traffic
-    - `http.outbound_*`: outbound listener stats
-- Activescale sums `listener.*.downstream_cx_active` into `active_connections`, but excludes known infrastructure listeners:
-    - `15000`: Envoy admin port
-    - `15020`: Istio merged metrics port
-    - `15021`: Istio health/readiness port
-    - `15090`: Envoy Prometheus metrics port
-- These listener ports are excluded so `active_connections` reflects service traffic only, not admin, health, or telemetry scrapes.
+- Activescale exposes inbound and outbound HTTP connection-manager request metrics separately.
+- `http.admin.*`, `http.agent.*`, and Prometheus-style `envoy_http_downstream_rq_active` aliases are ignored.
+- `active_connections` accepts aggregate `listener.<address>.downstream_cx_active` families for service listener ports.
+- Worker breakdowns such as `listener.<address>.worker_0.downstream_cx_active` and [Istio-reserved proxy ports](https://istio.io/latest/docs/ops/deployment/application-requirements/#ports-used-by-istio) for admin, failure detection, debug, telemetry, health, and DNS are ignored.
+- Traffic-path listeners for outbound (`15001`), inbound (`15006`), and HBONE (`15008`) remain eligible.

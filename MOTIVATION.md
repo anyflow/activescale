@@ -125,7 +125,7 @@ Istio/Envoy와 kube-apiserver용의 2개의 endpoints 노출. 관련 생태계�
     https://github.com/kubernetes-sigs/custom-metrics-apiserver
 
     - [External metrics API](https://kubernetes.io/docs/reference/external-api/external-metrics.v1beta1/)는 KEDA 등 타 `APIService`가 사용할 가능성이 높으므로 [Custom metrics API](https://kubernetes.io/docs/reference/external-api/custom-metrics.v1beta2/) 사용(대신 타 Custom metrics Adapter를 못 씀. 예컨데 Prometheus Adapter - 이게 필요하면 KEDA 쓰면 되긴 하지만).
-    - `GET /apis/custom.metrics.k8s.io/v1beta2/namespaces/default/pods/*/active_requests?labelSelector=...` 같은 요청이 오면,
+    - `GET /apis/custom.metrics.k8s.io/v1beta2/namespaces/default/pods/*/inbound_active_requests?labelSelector=...` 같은 요청이 오면,
     - namespace, pod를 key로 Redis 조회
     - HPA 대상 Deployment의 pod들 각각에 대해 `rq_active` 값을 **리스트로 반환**(각 pod 이름별. HPA가 평균을 계산). 참고로 metrics adapter가 합산하면 HPA resource type을 service로 해야하기에 제약이 발생(workload 특정이 어려움).
 
