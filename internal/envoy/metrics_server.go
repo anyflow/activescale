@@ -71,6 +71,9 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 			atomic.AddUint64(&s.dropByID, 1)
 			continue
 		}
+		if err := s.store.TouchPod(ctx, streamNS, streamPod); err != nil {
+			klog.Warningf("redis heartbeat failed ns=%s pod=%s: %v", streamNS, streamPod, err)
+		}
 
 		metricValues, seenValues, droppedByName := collectMetricValues(msg.GetEnvoyMetrics())
 		if droppedByName > 0 {

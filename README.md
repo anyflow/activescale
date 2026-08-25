@@ -182,3 +182,29 @@ Activescale reads both Envoy HTTP connection manager and listener stats, dependi
 - `active_connections` accepts aggregate `listener.<address>.downstream_cx_active` families for service listener ports.
 - Worker breakdowns such as `listener.<address>.worker_0.downstream_cx_active` and [Istio-reserved proxy ports](https://istio.io/latest/docs/ops/deployment/application-requirements/#ports-used-by-istio) for admin, failure detection, debug, telemetry, health, and DNS are ignored.
 - Traffic-path listeners for outbound (`15001`), inbound (`15006`), and HBONE (`15008`) remain eligible.
+
+## Appendix
+
+### Missing metric values
+
+Envoy can omit an active stat family for a new or idle pod. Activescale refreshes a per-pod heartbeat on every `StreamMetrics` message and applies the metric TTL to that heartbeat. The default TTL is `20s` and can be changed with `METRIC_TTL` or `--ttl`.
+
+- A fresh heartbeat with no metric key is returned as `0` because collection is healthy and the pod has no observed active work.
+- A missing or expired heartbeat remains missing and can produce `HTTP 404 NotFound` because returning `0` would hide an Envoy collection outage and could cause an unsafe HPA scale-in.
+
+Heartbeat-gated zeros prevent healthy idle pods from causing `FailedGetPodsMetric` or conservative scale-in delays without treating stale telemetry as zero. Provider summary logs count these values as `synthesized_zeros`.
+
+#### Handling `HTTP 404 NotFound`
+
+`HTTP 404 NotFound` means telemetry is unavailable, not that the metric value is zero.
+
+Kubernetes HPA retries automatically and handles missing metrics conservatively, as described by the [HPA algorithm](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/#algorithm-details).
+
+| Metric state | HPA action |
+| --- | --- |
+| All configured metrics return `HTTP 404 NotFound` | Keep the current replicas; neither scale up nor scale down |
+| One metric returns `HTTP 404 NotFound`, another valid metric requests scale-up | Scale up using the valid metric |
+| One metric returns `HTTP 404 NotFound`, another valid metric requests scale-down | Skip scale-down and keep the current replicas |
+| All configured metrics are available | Use the largest desired replica count |
+
+A direct Custom Metrics API client should apply the same policy: allow scale-up from another valid metric, block scale-down while any metric is unavailable, keep the current replicas when all metrics are unavailable, and retry on the next collection cycle. It must not substitute zero and should alert if `HTTP 404 NotFound` persists.

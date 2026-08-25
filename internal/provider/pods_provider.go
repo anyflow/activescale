@@ -9,7 +9,6 @@ import (
 	"time"
 
 	podmetrics "activescale/internal/podmetrics"
-	redisstore "activescale/internal/redis"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,22 +22,46 @@ import (
 	cmprovider "sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
+type metricStore interface {
+	GetGauge(context.Context, string, string, string) (float64, bool, error)
+	IsPodFresh(context.Context, string, string) (bool, error)
+}
+
 type PodsProvider struct {
 	kube  kubernetes.Interface
-	store *redisstore.Store
+	store metricStore
 
 	logOnce     sync.Once
 	logEvery    time.Duration
 	queryCount  uint64
 	resultCount uint64
+	zeroCount   uint64
 }
 
-func NewPodsProvider(kube kubernetes.Interface, store *redisstore.Store, logEvery time.Duration) *PodsProvider {
+func NewPodsProvider(kube kubernetes.Interface, store metricStore, logEvery time.Duration) *PodsProvider {
 	return &PodsProvider{
 		kube:     kube,
 		store:    store,
 		logEvery: logEvery,
 	}
+}
+
+func (p *PodsProvider) metricForPod(ctx context.Context, namespace, pod, metric string) (float64, bool, error) {
+	fresh, err := p.store.IsPodFresh(ctx, namespace, pod)
+	if err != nil || !fresh {
+		return 0, false, err
+	}
+
+	val, ok, err := p.store.GetGauge(ctx, namespace, pod, metric)
+	if err != nil {
+		return 0, false, err
+	}
+	if !ok {
+		atomic.AddUint64(&p.zeroCount, 1)
+		klog.V(4).Infof("synthesized zero namespace=%s pod=%s metric=%s", namespace, pod, metric)
+		return 0, true, nil
+	}
+	return val, true, nil
 }
 
 func (p *PodsProvider) GetMetricBySelector(
@@ -69,12 +92,12 @@ func (p *PodsProvider) GetMetricBySelector(
 	}
 
 	for _, pod := range pods.Items {
-		val, ok, err := p.store.GetGauge(ctx, namespace, pod.Name, info.Metric)
+		val, ok, err := p.metricForPod(ctx, namespace, pod.Name, info.Metric)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
-			// Skip pods with no value (including TTL-expired entries).
+			// Skip pods whose Envoy heartbeat is missing or TTL-expired.
 			continue
 		}
 
@@ -123,7 +146,7 @@ func (p *PodsProvider) GetMetricByName(
 	})
 	atomic.AddUint64(&p.queryCount, 1)
 	klog.V(2).Infof("custom metrics query namespace=%s pod=%s metric=%s", name.Namespace, name.Name, info.Metric)
-	val, ok, err := p.store.GetGauge(ctx, name.Namespace, name.Name, info.Metric)
+	val, ok, err := p.metricForPod(ctx, name.Namespace, name.Name, info.Metric)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +181,8 @@ func (p *PodsProvider) logSummary() {
 	for range ticker.C {
 		queries := atomic.SwapUint64(&p.queryCount, 0)
 		results := atomic.SwapUint64(&p.resultCount, 0)
-		klog.Infof("custom metrics queries in last %s: %d, returned items: %d", p.logEvery, queries, results)
+		zeros := atomic.SwapUint64(&p.zeroCount, 0)
+		klog.Infof("custom metrics queries in last %s: %d, returned items: %d, synthesized_zeros: %d", p.logEvery, queries, results, zeros)
 	}
 }
 

@@ -9,6 +9,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// podHeartbeatMetric distinguishes a healthy idle Envoy stream from stale telemetry.
+const podHeartbeatMetric = "__envoy_heartbeat"
+
 type Store struct {
 	// Cmdable is implemented by *redis.Client and *redis.ClusterClient.
 	rdb     redis.Cmdable
@@ -27,6 +30,15 @@ func (s *Store) key(ns, pod, metric string) string {
 // SetGauge stores a single gauge value with TTL.
 func (s *Store) SetGauge(ctx context.Context, ns, pod, metric string, val float64) error {
 	return s.rdb.Set(ctx, s.key(ns, pod, metric), fmt.Sprintf("%.6f", val), s.ttl).Err()
+}
+
+func (s *Store) TouchPod(ctx context.Context, ns, pod string) error {
+	return s.SetGauge(ctx, ns, pod, podHeartbeatMetric, 1)
+}
+
+func (s *Store) IsPodFresh(ctx context.Context, ns, pod string) (bool, error) {
+	_, ok, err := s.GetGauge(ctx, ns, pod, podHeartbeatMetric)
+	return ok, err
 }
 
 // GetGauge returns (value, ok, err). ok=false means missing/expired.
