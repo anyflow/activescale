@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ns-observability
+  name: observability
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: activescale-config
-  namespace: ns-observability
+  namespace: observability
 data:
   REDIS_CONTEXT: "activescale:tcn"
   REDIS_ADDR: "redis.custom-metrics.svc.cluster.local:6379"
@@ -23,7 +23,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: activescale-serving-cert
-  namespace: ns-observability
+  namespace: observability
 type: kubernetes.io/tls
 stringData:
   tls.crt: |
@@ -35,7 +35,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: activescale
-  namespace: ns-observability
+  namespace: observability
 spec:
   replicas: 2
   selector:
@@ -80,7 +80,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: activescale
-  namespace: ns-observability
+  namespace: observability
 spec:
   selector:
     app: activescale
@@ -101,7 +101,7 @@ spec:
   version: v1beta2
   service:
     name: activescale
-    namespace: ns-observability
+    namespace: observability
   groupPriorityMinimum: 100
   versionPriority: 200
   caBundle: REPLACE_WITH_BASE64_SERVER_CERT

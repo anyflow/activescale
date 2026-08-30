@@ -6,6 +6,13 @@ Activescale enables fast Kubernetes autoscaling with push-based, per-pod active 
 
 Unlike CPU and memory metrics collected through metrics-server, Envoy pushes active signals directly to Activescale, avoiding extra scrape and polling delays.
 
+## Documentation
+
+- **Guide**: [한국어](doc/guide-kr.md) | [English](doc/guide-en.md) — metric selection, HPA configuration, and verification
+- **Motivation**: [한국어](doc/motivation-kr.md) | [English](doc/motivation-en.md) — rationale, latency comparison, and architecture
+- **Test results**: [한국어](doc/test-results-kr.md) | [English](doc/test-results-en.md) — scaling responsiveness, Scale-out Coverage, and estimated resource utilization summary
+- **Kubernetes manifest example**: [k8s-manifest-example.yaml](k8s-manifest-example.yaml) — deployment and HPA example requiring Redis, ServiceAccount/RBAC, serving certificates, and a target workload
+
 ## Features
 
 - Active request concurrency as an autoscaling signal that reflects both request rate and request latency

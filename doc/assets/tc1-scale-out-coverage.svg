@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="440" viewBox="0 0 920 440" role="img" aria-labelledby="title desc">
+<title>TC1 Scale-out Coverage Distribution</title>
+<desc>CPU/Memory HPA and Activescale HPA coverage histogram</desc>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="460.0" y="28" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700" fill="#1f2933">TC1 Scale-out Coverage Distribution</text>
+<line x1="72" y1="362.00" x2="896" y2="362.00" stroke="#e5e7eb" stroke-width="1"/>
+<text x="62" y="366.00" text-anchor="end" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">0</text>
+<line x1="72" y1="293.56" x2="896" y2="293.56" stroke="#e5e7eb" stroke-width="1"/>
+<text x="62" y="297.56" text-anchor="end" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">4</text>
+<line x1="72" y1="225.11" x2="896" y2="225.11" stroke="#e5e7eb" stroke-width="1"/>
+<text x="62" y="229.11" text-anchor="end" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">8</text>
+<line x1="72" y1="156.67" x2="896" y2="156.67" stroke="#e5e7eb" stroke-width="1"/>
+<text x="62" y="160.67" text-anchor="end" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">12</text>
+<line x1="72" y1="88.22" x2="896" y2="88.22" stroke="#e5e7eb" stroke-width="1"/>
+<text x="62" y="92.22" text-anchor="end" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">16</text>
+<line x1="72" y1="54.00" x2="896" y2="54.00" stroke="#e5e7eb" stroke-width="1"/>
+<text x="62" y="58.00" text-anchor="end" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">18</text>
+<line x1="72" y1="362" x2="896" y2="362" stroke="#7b8794" stroke-width="1.2"/>
+<line x1="72" y1="54" x2="72" y2="362" stroke="#7b8794" stroke-width="1.2"/>
+<rect x="81.89" y="54.00" width="28.02" height="308.00" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="116.50" y="362.00" width="28.02" height="0.00" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="113.20" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">0-10</text>
+<rect x="164.29" y="344.89" width="28.02" height="17.11" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="198.90" y="362.00" width="28.02" height="0.00" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="195.60" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">10-20</text>
+<rect x="246.69" y="362.00" width="28.02" height="0.00" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="281.30" y="362.00" width="28.02" height="0.00" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="278.00" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">20-30</text>
+<rect x="329.09" y="362.00" width="28.02" height="0.00" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="363.70" y="362.00" width="28.02" height="0.00" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="360.40" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">30-40</text>
+<rect x="411.49" y="293.56" width="28.02" height="68.44" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="446.10" y="362.00" width="28.02" height="0.00" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="442.80" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">40-50</text>
+<rect x="493.89" y="242.22" width="28.02" height="119.78" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="528.50" y="362.00" width="28.02" height="0.00" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="525.20" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">50-60</text>
+<rect x="576.29" y="327.78" width="28.02" height="34.22" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="610.90" y="362.00" width="28.02" height="0.00" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="607.60" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">60-70</text>
+<rect x="658.69" y="362.00" width="28.02" height="0.00" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="693.30" y="310.67" width="28.02" height="51.33" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="690.00" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">70-80</text>
+<rect x="741.09" y="362.00" width="28.02" height="0.00" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="775.70" y="122.44" width="28.02" height="239.56" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="772.40" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">80-90</text>
+<rect x="823.49" y="362.00" width="28.02" height="0.00" fill="#4F7CAC" fill-opacity="0.82"/>
+<rect x="858.10" y="105.33" width="28.02" height="256.67" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="854.80" y="380.00" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#52606d">90-100</text>
+<rect x="676" y="40" width="12" height="12" fill="#4F7CAC" fill-opacity="0.82"/>
+<text x="694" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#1f2933">CPU/Memory HPA</text>
+<rect x="786" y="40" width="12" height="12" fill="#E07A5F" fill-opacity="0.82"/>
+<text x="804" y="50" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#1f2933">Activescale HPA</text>
+<text x="460.0" y="422" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#52606d">Coverage (%)</text>
+<text x="18" y="208.0" text-anchor="middle" transform="rotate(-90 18 208.0)" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#52606d">Run count</text>
+</svg>
