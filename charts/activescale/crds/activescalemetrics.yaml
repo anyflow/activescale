@@ -1,0 +1,50 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: activescalemetrics.activescale.anyflow.io
+spec:
+  group: activescale.anyflow.io
+  scope: Cluster
+  names:
+    plural: activescalemetrics
+    singular: activescalemetric
+    kind: ActivescaleMetric
+    shortNames:
+      - asm
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - metricName
+                - envoyMetricPattern
+                - perPodAggregation
+                - filter
+              properties:
+                metricName:
+                  type: string
+                  minLength: 1
+                  description: HPA and Custom Metrics API metric name.
+                envoyMetricPattern:
+                  type: string
+                  minLength: 1
+                  description: Glob pattern matched against the raw Envoy StreamMetrics family name.
+                perPodAggregation:
+                  type: string
+                  enum:
+                    - sum
+                  description: Sum all accepted Gauge samples for each Pod.
+                filter:
+                  type: string
+                  enum:
+                    - none
+                    - connection_aggregate
+                  description: Built-in sample filtering policy applied after envoyMetricPattern matching.

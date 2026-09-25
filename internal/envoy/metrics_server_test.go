@@ -51,7 +51,7 @@ func TestCollectMetricValues(t *testing.T) {
 		},
 	}
 
-	values, seen, droppedByName := collectMetricValues(metricFamilies)
+	values, seen, droppedByName := collectMetricValues(podmetrics.DefaultCatalog(), metricFamilies)
 
 	if got := values[podmetrics.InboundActiveRequests]; got != 5 {
 		t.Fatalf("inbound_active_requests total = %v, want 5", got)

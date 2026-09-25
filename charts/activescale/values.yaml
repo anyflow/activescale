@@ -1,0 +1,69 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/anyflow/activescale
+  tag: latest
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+rbac:
+  create: true
+
+service:
+  type: ClusterIP
+
+apiService:
+  create: true
+  caBundle: ""
+  groupPriorityMinimum: 100
+  versionPriority: 200
+
+serving:
+  secretName: activescale-serving-cert
+  createSecret: false
+  tlsCrt: ""
+  tlsKey: ""
+
+redis:
+  address: redis:6379
+  context: activescale:tcn
+  tls: "false"
+  cluster: "false"
+
+grpc:
+  port: "9000"
+  maxRecvMsgSize: "33554432"
+
+metricTTL: 20s
+logVerbosity: "0"
+logSummaryInterval: 30s
+
+metricCatalog:
+  metrics:
+    # metricName is the HPA/API name; CR metadata.name is only the Kubernetes resource name.
+    - name: inbound-active-requests
+      metricName: inbound_active_requests
+      envoyMetricPattern: http.inbound_*.downstream_rq_active
+      perPodAggregation: sum
+      filter: none
+    - name: outbound-active-requests
+      metricName: outbound_active_requests
+      envoyMetricPattern: http.outbound_*.downstream_rq_active
+      perPodAggregation: sum
+      filter: none
+    - name: active-connections
+      metricName: active_connections
+      envoyMetricPattern: listener.*.downstream_cx_active
+      perPodAggregation: sum
+      filter: connection_aggregate
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

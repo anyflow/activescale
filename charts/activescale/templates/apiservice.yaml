@@ -1,0 +1,19 @@
+{{- if .Values.apiService.create }}
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta2.custom.metrics.k8s.io
+  labels:
+    {{- include "activescale.labels" . | nindent 4 }}
+spec:
+  group: custom.metrics.k8s.io
+  version: v1beta2
+  service:
+    name: {{ include "activescale.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+  groupPriorityMinimum: {{ .Values.apiService.groupPriorityMinimum }}
+  versionPriority: {{ .Values.apiService.versionPriority }}
+  {{- with .Values.apiService.caBundle }}
+  caBundle: {{ . | quote }}
+  {{- end }}
+{{- end }}

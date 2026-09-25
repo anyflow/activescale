@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "activescale.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "activescale.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "activescale.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "activescale.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "activescale.serviceAccountName" . }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: activescale
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --secure-port=6443
+            - --cert-dir=/var/run/serving-cert
+            - --tls-cert-file=/var/run/serving-cert/tls.crt
+            - --tls-private-key-file=/var/run/serving-cert/tls.key
+          env:
+            - name: REDIS_ADDR
+              value: {{ .Values.redis.address | quote }}
+            - name: REDIS_CONTEXT
+              value: {{ .Values.redis.context | quote }}
+            - name: REDIS_TLS
+              value: {{ .Values.redis.tls | quote }}
+            - name: REDIS_CLUSTER
+              value: {{ .Values.redis.cluster | quote }}
+            - name: GRPC_PORT
+              value: {{ .Values.grpc.port | quote }}
+            - name: GRPC_MAX_RECV_MSG_SIZE
+              value: {{ .Values.grpc.maxRecvMsgSize | quote }}
+            - name: METRIC_TTL
+              value: {{ .Values.metricTTL | quote }}
+            - name: LOG_VERBOSITY
+              value: {{ .Values.logVerbosity | quote }}
+            - name: LOG_METRICS_SUMMARY_INTERVAL
+              value: {{ .Values.logSummaryInterval | quote }}
+          ports:
+            - name: https
+              containerPort: 6443
+            - name: envoy-grpc
+              containerPort: {{ .Values.grpc.port }}
+            - name: health
+              containerPort: 18080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /var/run/serving-cert
+              readOnly: true
+      volumes:
+        - name: serving-cert
+          secret:
+            secretName: {{ .Values.serving.secretName }}

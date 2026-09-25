@@ -12,6 +12,7 @@ Unlike CPU and memory metrics collected through metrics-server, Envoy pushes act
 - **Motivation**: [한국어](doc/motivation-kr.md) | [English](doc/motivation-en.md) — rationale, latency comparison, and architecture
 - **Test results**: [한국어](doc/test-results-kr.md) | [English](doc/test-results-en.md) — scaling responsiveness, Scale-out Coverage, and estimated resource utilization summary
 - **Kubernetes manifest example**: [k8s-manifest-example.yaml](k8s-manifest-example.yaml) — deployment and HPA example requiring Redis, ServiceAccount/RBAC, serving certificates, and a target workload
+- **Helm chart**: [charts/activescale](charts/activescale) — adapter, `ActivescaleMetric` CRD, default metric resources, RBAC, and APIService
 
 ## Features
 
@@ -30,6 +31,11 @@ Unlike CPU and memory metrics collected through metrics-server, Envoy pushes act
 - `active_connections`: open connections across aggregate Envoy service listeners from `listener.<address>.downstream_cx_active`
 
 All metrics are exposed as pod-scoped custom metrics for HPA.
+
+The Helm chart installs the `ActivescaleMetric` CRD and the three predefined
+metric resources. `spec.metricName` is the HPA and Custom Metrics API name;
+`metadata.name` is only the Kubernetes resource name. Every accepted metric is
+aggregated as a per-Pod sum.
 
 ### Choosing a request metric
 
@@ -191,6 +197,38 @@ Activescale reads both Envoy HTTP connection manager and listener stats, dependi
 - Traffic-path listeners for outbound (`15001`), inbound (`15006`), and HBONE (`15008`) remain eligible.
 
 ## Appendix
+
+### Predefined metric definitions and filtering
+
+Activescale uses the following three predefined logical metrics and keeps the
+HPA-facing names stable while matching Envoy's raw `StreamMetrics` names.
+
+| HPA/API metric | Envoy source pattern | per-Pod aggregation | Filter |
+| --- | --- | --- | --- |
+| `inbound_active_requests` | `http.inbound_*.downstream_rq_active` | `sum` | `none` |
+| `outbound_active_requests` | `http.outbound_*.downstream_rq_active` | `sum` | `none` |
+| `active_connections` | `listener.*.downstream_cx_active` | `sum` | `connection_aggregate` |
+
+The three resources are represented by `ActivescaleMetric` objects. A new
+metric supplies `spec.metricName`, `spec.envoyMetricPattern`,
+`spec.perPodAggregation: sum`, and `spec.filter: none` or
+`spec.filter: connection_aggregate`.
+
+`active_connections` needs internal filtering because Envoy reports listener
+connection statistics under one `listener.*` family. A listener root such as
+`listener.0.0.0.0_8443.downstream_cx_active` is the aggregate, while
+`listener.0.0.0.0_8443.worker_0.downstream_cx_active` is only one worker's
+breakdown. Summing both counts the same connections twice. Admin listeners and
+Istio-reserved ports are also excluded from this metric.
+
+The request metrics use `filter: none` because they are HTTP connection-manager
+statistics whose role is encoded in the stat prefix:
+`http.inbound_*`, `http.outbound_*`, `http.admin.*`, `http.agent.*`, and
+`http.stats.*` are separate scopes. The inbound and outbound patterns match
+only the application request scopes used by the current Istio configuration;
+they do not match the admin, agent, or stats scopes. This is scope matching,
+not a general reserved-port denylist, so a deployment that emits a management
+HCM under an `http.inbound_*` prefix must use a narrower source pattern.
 
 ### Missing metric values
 

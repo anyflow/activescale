@@ -22,7 +22,8 @@ import (
 
 type MetricsServer struct {
 	metricsv3.UnimplementedMetricsServiceServer
-	store *redisstore.Store
+	store   *redisstore.Store
+	catalog *podmetrics.CatalogStore
 
 	logOnce       sync.Once
 	logEvery      time.Duration
@@ -32,9 +33,10 @@ type MetricsServer struct {
 	storedMetrics uint64
 }
 
-func NewMetricsServer(store *redisstore.Store, logEvery time.Duration) *MetricsServer {
+func NewMetricsServer(store *redisstore.Store, catalog *podmetrics.CatalogStore, logEvery time.Duration) *MetricsServer {
 	return &MetricsServer{
 		store:    store,
+		catalog:  catalog,
 		logEvery: logEvery,
 	}
 }
@@ -75,12 +77,13 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 			klog.Warningf("redis heartbeat failed ns=%s pod=%s: %v", streamNS, streamPod, err)
 		}
 
-		metricValues, seenValues, droppedByName := collectMetricValues(msg.GetEnvoyMetrics())
+		catalog := s.catalog.Current()
+		metricValues, seenValues, droppedByName := collectMetricValues(catalog, msg.GetEnvoyMetrics())
 		if droppedByName > 0 {
 			atomic.AddUint64(&s.dropName, uint64(droppedByName))
 		}
 
-		for _, metricName := range podmetrics.Names() {
+		for _, metricName := range catalog.Names() {
 			if !seenValues[metricName] {
 				continue
 			}
@@ -94,9 +97,9 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 	}
 }
 
-func collectMetricValues(metricFamilies []*dto.MetricFamily) (map[string]float64, map[string]bool, int) {
-	totals := make(map[string]float64, len(podmetrics.Names()))
-	seen := make(map[string]bool, len(podmetrics.Names()))
+func collectMetricValues(catalog *podmetrics.Catalog, metricFamilies []*dto.MetricFamily) (map[string]float64, map[string]bool, int) {
+	totals := make(map[string]float64, len(catalog.Names()))
+	seen := make(map[string]bool, len(catalog.Names()))
 	droppedByName := 0
 
 	for _, metricFamily := range metricFamilies {
@@ -106,7 +109,7 @@ func collectMetricValues(metricFamilies []*dto.MetricFamily) (map[string]float64
 			continue
 		}
 
-		metricName, ok := podmetrics.MatchMetricName(name)
+		metricName, ok := catalog.MatchMetricName(name)
 		if !ok {
 			klog.V(4).Infof("skipping metric name=%s", name)
 			droppedByName++

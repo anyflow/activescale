@@ -28,8 +28,9 @@ type metricStore interface {
 }
 
 type PodsProvider struct {
-	kube  kubernetes.Interface
-	store metricStore
+	kube    kubernetes.Interface
+	store   metricStore
+	catalog *podmetrics.CatalogStore
 
 	logOnce     sync.Once
 	logEvery    time.Duration
@@ -38,10 +39,11 @@ type PodsProvider struct {
 	zeroCount   uint64
 }
 
-func NewPodsProvider(kube kubernetes.Interface, store metricStore, logEvery time.Duration) *PodsProvider {
+func NewPodsProvider(kube kubernetes.Interface, store metricStore, catalog *podmetrics.CatalogStore, logEvery time.Duration) *PodsProvider {
 	return &PodsProvider{
 		kube:     kube,
 		store:    store,
+		catalog:  catalog,
 		logEvery: logEvery,
 	}
 }
@@ -188,8 +190,9 @@ func (p *PodsProvider) logSummary() {
 
 // Framework가 원하는 “지원 metric 선언”
 func (p *PodsProvider) ListAllMetrics() []cmprovider.CustomMetricInfo {
-	infos := make([]cmprovider.CustomMetricInfo, 0, len(podmetrics.Names()))
-	for _, metricName := range podmetrics.Names() {
+	catalog := p.catalog.Current()
+	infos := make([]cmprovider.CustomMetricInfo, 0, len(catalog.Names()))
+	for _, metricName := range catalog.Names() {
 		infos = append(infos, cmprovider.CustomMetricInfo{
 			GroupResource: schema.GroupResource{Group: "", Resource: "pods"},
 			Metric:        metricName,

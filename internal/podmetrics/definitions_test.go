@@ -15,6 +15,27 @@ func TestNames(t *testing.T) {
 	}
 }
 
+func TestCatalogMatchesConfiguredMetric(t *testing.T) {
+	catalog, err := NewCatalog([]Definition{
+		{
+			Name:              "backend-upstream-connections",
+			SourcePattern:     "cluster.*.upstream_cx_active",
+			PerPodAggregation: AggregationSum,
+			Filter:            FilterNone,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, ok := catalog.MatchMetricName("cluster.backend.upstream_cx_active"); !ok || got != "backend-upstream-connections" {
+		t.Fatalf("MatchMetricName() = (%q, %t), want (backend-upstream-connections, true)", got, ok)
+	}
+	if _, ok := catalog.MatchMetricName("http.inbound_0.0.0.0_8080;.downstream_rq_active"); ok {
+		t.Fatal("configured catalog should not match an undeclared metric")
+	}
+}
+
 func TestMatchMetricNameForRequestMetrics(t *testing.T) {
 	t.Parallel()
 

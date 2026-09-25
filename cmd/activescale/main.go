@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"activescale/internal/envoy"
+	"activescale/internal/podmetrics"
 	adapterprovider "activescale/internal/provider"
 	redisstore "activescale/internal/redis"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
@@ -111,25 +113,7 @@ func main() {
 	store := redisstore.New(rdb, ttl, redisContext)
 	klog.Infof("redis client initialized")
 
-	// 1) gRPC sink server
-	klog.Infof("initializing envoy metrics gRPC server")
-	go func() {
-		lis, err := net.Listen("tcp", ":"+grpcPort)
-		if err != nil {
-			klog.Fatalf("grpc listen: %v", err)
-		}
-		klog.Infof("envoy metrics gRPC port bound addr=:%s", grpcPort)
-		gs := grpc.NewServer(
-			grpc.MaxRecvMsgSize(defaultGRPCMaxRecvMsgSize),
-		)
-		envoy.NewMetricsServer(store, defaultSummaryInterval).Register(gs)
-		klog.Infof("envoy metrics gRPC listening on %s", ":"+grpcPort)
-		if err := gs.Serve(lis); err != nil {
-			klog.Fatalf("grpc serve: %v", err)
-		}
-	}()
-
-	// 2) custom-metrics apiserver
+	// 1) custom-metrics apiserver
 	// framework는 보통 HTTPS + authn/authz + APIService 연동을 처리.
 	// 여기서는 “provider만 주입”하는 최소 형태로 작성합니다.
 	klog.Infof("initializing custom metrics provider")
@@ -143,9 +127,42 @@ func main() {
 		klog.Fatalf("kube client: %v", err)
 	}
 	klog.Infof("kube client initialized")
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		klog.Fatalf("dynamic kube client: %v", err)
+	}
+	catalog, loadedFromCR, err := podmetrics.LoadCatalogFromKubernetes(context.Background(), dynamicClient)
+	if err != nil {
+		klog.Fatalf("load metric catalog: %v", err)
+	}
+	if loadedFromCR {
+		klog.Infof("loaded metric catalog from ActivescaleMetric resources: %v", catalog.Names())
+	} else {
+		klog.Infof("using built-in metric catalog: %v", catalog.Names())
+	}
+	catalogStore := podmetrics.NewCatalogStore(catalog)
+	go refreshMetricCatalog(context.Background(), dynamicClient, catalogStore)
 
-	podsProvider := adapterprovider.NewPodsProvider(kube, store, defaultSummaryInterval)
+	podsProvider := adapterprovider.NewPodsProvider(kube, store, catalogStore, defaultSummaryInterval)
 	cmd.WithCustomMetrics(podsProvider)
+
+	// 2) gRPC sink server
+	klog.Infof("initializing envoy metrics gRPC server")
+	go func() {
+		lis, err := net.Listen("tcp", ":"+grpcPort)
+		if err != nil {
+			klog.Fatalf("grpc listen: %v", err)
+		}
+		klog.Infof("envoy metrics gRPC port bound addr=:%s", grpcPort)
+		gs := grpc.NewServer(
+			grpc.MaxRecvMsgSize(defaultGRPCMaxRecvMsgSize),
+		)
+		envoy.NewMetricsServer(store, catalogStore, defaultSummaryInterval).Register(gs)
+		klog.Infof("envoy metrics gRPC listening on %s", ":"+grpcPort)
+		if err := gs.Serve(lis); err != nil {
+			klog.Fatalf("grpc serve: %v", err)
+		}
+	}()
 
 	go func() {
 		if err := cmd.Run(context.Background()); err != nil {
@@ -178,6 +195,26 @@ func main() {
 		_, _ = w.Write([]byte("ready"))
 	})
 	klog.Fatalf("http server error: %v", http.ListenAndServe(":18080", mux))
+}
+
+func refreshMetricCatalog(ctx context.Context, client dynamic.Interface, store *podmetrics.CatalogStore) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			catalog, loadedFromCR, err := podmetrics.LoadCatalogFromKubernetes(ctx, client)
+			if err != nil {
+				klog.Warningf("refresh metric catalog: %v", err)
+				continue
+			}
+			store.Replace(catalog)
+			klog.V(2).Infof("refreshed metric catalog from CRs=%t: %v", loadedFromCR, catalog.Names())
+		}
+	}
 }
 
 func envOr(key, fallback string) string {

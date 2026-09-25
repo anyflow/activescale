@@ -1,0 +1,16 @@
+{{- range .Values.metricCatalog.metrics }}
+apiVersion: activescale.anyflow.io/v1alpha1
+kind: ActivescaleMetric
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "activescale.labels" $ | nindent 4 }}
+spec:
+  {{- with .metricName }}
+  metricName: {{ . | quote }}
+  {{- end }}
+  envoyMetricPattern: {{ .envoyMetricPattern | quote }}
+  perPodAggregation: {{ .perPodAggregation | quote }}
+  filter: {{ .filter | quote }}
+---
+{{- end }}
