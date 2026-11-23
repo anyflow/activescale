@@ -1,26 +1,22 @@
 name: release
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
   workflow_dispatch:
 
 permissions:
-  contents: write
-  packages: write
-
-concurrency:
-  group: release
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  release:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-go@v7
         with:
@@ -29,6 +25,21 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Determine version
         id: version
@@ -40,7 +51,7 @@ jobs:
           set -euo pipefail
           git fetch origin main --tags
 
-          last_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n1)"
+          last_tag="$(git tag --merged HEAD --sort=-version:refname --list | sed -n -E '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/p' | sed -n '1p')"
           if [ -n "${last_tag}" ]; then
             current_version="${last_tag#v}"
             commit_range="${last_tag}..HEAD"
@@ -52,19 +63,25 @@ jobs:
 
           IFS=. read -r major minor patch extra <<< "${current_version}"
           test -n "${major}" -a -n "${minor}" -a -n "${patch}" -a -z "${extra:-}"
-          commit_messages="$(git log --no-merges --format='%s%n%b' "${commit_range}")"
+          commit_titles="$(git log --no-merges --format=%s "${commit_range}")"
+          commit_bodies="$(git log --no-merges --format=%b "${commit_range}")"
+
+          image_changes="$(git diff --name-only "${commit_range}" -- cmd/ internal/ go.mod go.sum Dockerfile .dockerignore)"
 
           bump=none
-          if printf '%s\n' "${commit_messages}" | grep -Eq '(^|[[:space:]])BREAKING[ -]CHANGE[[:space:]]*:|^[[:alnum:]-]+(\([^)]*\))?!:'; then
+          if grep -Eq '^[[:alnum:]-]+(\([^)]*\))?!:' <<< "${commit_titles}" ||
+             grep -Eq '^BREAKING[ -]CHANGE:[[:space:]]' <<< "${commit_bodies}"; then
             bump=major
-          elif printf '%s\n' "${commit_messages}" | grep -Eq '^feat(\([^)]*\))?:'; then
+          elif grep -Eq '^feat(\([^)]*\))?:' <<< "${commit_titles}"; then
             bump=minor
-          elif printf '%s\n' "${commit_messages}" | grep -Eq '^(fix|perf)(\([^)]*\))?:'; then
+          elif grep -Eq '^(fix|perf)(\([^)]*\))?:' <<< "${commit_titles}"; then
+            bump=patch
+          elif [ -n "${image_changes}" ]; then
             bump=patch
           fi
 
           if [ "${bump}" = none ]; then
-            echo "No release-worthy Conventional Commit found since ${last_tag:-${BASE_REVISION}}"
+            echo "No release-worthy commit or image input change found since ${last_tag:-${BASE_REVISION}}"
             echo 'release=false' >> "${GITHUB_OUTPUT}"
             exit 0
           fi
@@ -109,6 +126,8 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
           tags: |
             ghcr.io/anyflow/activescale:${{ steps.version.outputs.version }}
             ghcr.io/anyflow/activescale:latest
