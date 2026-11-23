@@ -13,6 +13,27 @@ Unlike CPU and memory metrics collected through metrics-server, Envoy pushes act
 - **Test results**: [한국어](doc/test-results-kr.md) | [English](doc/test-results-en.md) — scaling responsiveness, Scale-out Coverage, and estimated resource utilization summary
 - **Kubernetes manifest example**: [k8s-manifest-example.yaml](k8s-manifest-example.yaml) — deployment and HPA example requiring Redis, ServiceAccount/RBAC, serving certificates, and a target workload
 
+## Local development
+
+Run the tests and build the adapter with Go.
+
+```sh
+go test ./...
+go build -o bin/activescale ./cmd/activescale
+```
+
+To run the adapter with an accessible Kubernetes API and a local standalone Redis, run:
+
+```sh
+REDIS_CLUSTER=false REDIS_ADDR=localhost:6379 go run ./cmd/activescale
+```
+
+## Image releases
+
+GitHub Actions tests pull requests and publishes the `linux/amd64` and `linux/arm64` image to GHCR from `main`. The workflow uses the latest stable Git tag reachable from the release commit and applies the highest Conventional Commit bump since that tag. A breaking change bumps the major version, `feat` bumps the minor version, and `fix` or `perf` bumps the patch version. Changes to the Go code, Go dependencies, Dockerfile, or Docker build context rules default to a patch bump when the commit history has no higher bump. Documentation-only changes without a release-worthy commit skip publishing.
+
+Each release has a matching Git tag such as `v0.2.0` and image tag such as `ghcr.io/anyflow/activescale:0.2.0`.
+
 ## Features
 
 - Active request concurrency as an autoscaling signal that reflects both request rate and request latency
