@@ -75,3 +75,24 @@ func TestCollectMetricValues(t *testing.T) {
 		t.Fatalf("droppedByName = %d, want 2", droppedByName)
 	}
 }
+
+func TestCollectMetricValuesRequiresAnObservedGauge(t *testing.T) {
+	t.Parallel()
+
+	const envoyName = "http.inbound_0.0.0.0_8080;.downstream_rq_active"
+	gauge := &dto.MetricFamily{
+		Name:   proto.String(envoyName),
+		Metric: []*dto.Metric{{Gauge: &dto.Gauge{}}},
+	}
+
+	values, seen, _ := collectMetricValues([]*dto.MetricFamily{gauge})
+	if _, ok := values[podmetrics.InboundActiveRequests]; ok || seen[podmetrics.InboundActiveRequests] {
+		t.Fatalf("gauge without a value was observed: values=%v, seen=%v", values, seen)
+	}
+
+	gauge.Metric[0].Gauge.Value = proto.Float64(0)
+	values, seen, _ = collectMetricValues([]*dto.MetricFamily{gauge})
+	if !seen[podmetrics.InboundActiveRequests] || values[podmetrics.InboundActiveRequests] != 0 {
+		t.Fatalf("explicit zero was not observed: values=%v, seen=%v", values, seen)
+	}
+}

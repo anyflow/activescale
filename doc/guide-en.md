@@ -147,5 +147,6 @@ kubectl get --raw \
 ```
 
 - A per-Pod `value` in `items` means the metric is exposed correctly.
-- `value: 0` means metric exposure is working, but there are currently no in-flight requests or open connections.
-- `HTTP 404 NotFound` means fresh Envoy telemetry is unavailable; it does not mean the value is zero.
+- `value: 0` means Envoy reported a current zero sample.
+- Selector queries omit Pods with missing or expired samples and return `HTTP 200` with `items: []` when no samples are available.
+- A named Pod lookup with no current sample returns `HTTP 404 NotFound`.

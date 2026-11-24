@@ -153,7 +153,7 @@ Expose two endpoints: one for Istio/Envoy and one for kube-apiserver. Implement 
 
 1. Receive a gRPC `StreamMetrics` request.
 2. Resolve the Pod and namespace from `node.metadata` or the Istio `node.id` fallback.
-3. Refresh the Pod heartbeat, then classify and aggregate Envoy statistics as `inbound_active_requests`, `outbound_active_requests`, and `active_connections`.
+3. Classify and aggregate observed Envoy gauges as `inbound_active_requests`, `outbound_active_requests`, and `active_connections`.
 4. Store each value in Redis under `{context, namespace, pod, metric}` with a TTL.
 
 ### kube-apiserver API Logic

@@ -147,5 +147,6 @@ kubectl get --raw \
 ```
 
 - `items`에 Pod별 `value`가 반환되면 metric이 정상 노출되는 상태임.
-- `value: 0`은 metric 노출은 정상이지만 현재 처리 중인 request 또는 열린 connection이 없음을 의미함.
-- `HTTP 404 NotFound`는 값 0이 아니라 fresh Envoy telemetry가 없음을 의미함.
+- `value: 0`은 Envoy에서 수집한 최신 값이 0임을 의미함.
+- selector 조회는 값이 없거나 만료된 Pod를 제외하며, 남은 값이 없으면 `HTTP 200`과 빈 `items` 배열을 반환함.
+- 이름으로 지정한 Pod에 최신 값이 없으면 `HTTP 404 NotFound`를 반환함.

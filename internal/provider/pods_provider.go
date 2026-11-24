@@ -3,7 +3,7 @@ package provider
 
 import (
 	"context"
-	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,7 +24,6 @@ import (
 
 type metricStore interface {
 	GetGauge(context.Context, string, string, string) (float64, bool, error)
-	IsPodFresh(context.Context, string, string) (bool, error)
 }
 
 type PodsProvider struct {
@@ -35,7 +34,6 @@ type PodsProvider struct {
 	logEvery    time.Duration
 	queryCount  uint64
 	resultCount uint64
-	zeroCount   uint64
 }
 
 func NewPodsProvider(kube kubernetes.Interface, store metricStore, logEvery time.Duration) *PodsProvider {
@@ -46,22 +44,10 @@ func NewPodsProvider(kube kubernetes.Interface, store metricStore, logEvery time
 	}
 }
 
-func (p *PodsProvider) metricForPod(ctx context.Context, namespace, pod, metric string) (float64, bool, error) {
-	fresh, err := p.store.IsPodFresh(ctx, namespace, pod)
-	if err != nil || !fresh {
-		return 0, false, err
-	}
+var podGroupResource = schema.GroupResource{Resource: "pods"}
 
-	val, ok, err := p.store.GetGauge(ctx, namespace, pod, metric)
-	if err != nil {
-		return 0, false, err
-	}
-	if !ok {
-		atomic.AddUint64(&p.zeroCount, 1)
-		klog.V(4).Infof("synthesized zero namespace=%s pod=%s metric=%s", namespace, pod, metric)
-		return 0, true, nil
-	}
-	return val, true, nil
+func supportsMetric(info cmprovider.CustomMetricInfo) bool {
+	return info.GroupResource == podGroupResource && info.Namespaced && slices.Contains(podmetrics.Names(), info.Metric)
 }
 
 func (p *PodsProvider) GetMetricBySelector(
@@ -72,6 +58,9 @@ func (p *PodsProvider) GetMetricBySelector(
 	metricSelector labels.Selector,
 ) (*custommetrics.MetricValueList, error) {
 	_ = metricSelector
+	if !supportsMetric(info) || namespace == "" {
+		return nil, cmprovider.NewMetricNotFoundError(info.GroupResource, info.Metric)
+	}
 	p.logOnce.Do(func() {
 		go p.logSummary()
 	})
@@ -92,12 +81,11 @@ func (p *PodsProvider) GetMetricBySelector(
 	}
 
 	for _, pod := range pods.Items {
-		val, ok, err := p.metricForPod(ctx, namespace, pod.Name, info.Metric)
+		val, ok, err := p.store.GetGauge(ctx, namespace, pod.Name, info.Metric)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
-			// Skip pods whose Envoy heartbeat is missing or TTL-expired.
 			continue
 		}
 
@@ -117,13 +105,6 @@ func (p *PodsProvider) GetMetricBySelector(
 		out.Items = append(out.Items, mv)
 	}
 
-	if len(out.Items) == 0 {
-		// Return a typed not-found so the aggregation layer treats this as missing data,
-		// not as an internal provider failure.
-		klog.V(2).Infof("custom metrics result empty namespace=%s metric=%s selector=%s", namespace, info.Metric, selector.String())
-		return nil, cmprovider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, "*", selector)
-	}
-
 	atomic.AddUint64(&p.resultCount, uint64(len(out.Items)))
 	klog.V(2).Infof("custom metrics result count=%d namespace=%s metric=%s selector=%s", len(out.Items), namespace, info.Metric, selector.String())
 	return out, nil
@@ -137,8 +118,8 @@ func (p *PodsProvider) GetMetricByName(
 	metricSelector labels.Selector,
 ) (*custommetrics.MetricValue, error) {
 	_ = metricSelector
-	if name.Namespace == "" {
-		return nil, fmt.Errorf("namespace is required for pod metrics")
+	if !supportsMetric(info) || name.Namespace == "" {
+		return nil, cmprovider.NewMetricNotFoundError(info.GroupResource, info.Metric)
 	}
 
 	p.logOnce.Do(func() {
@@ -146,7 +127,7 @@ func (p *PodsProvider) GetMetricByName(
 	})
 	atomic.AddUint64(&p.queryCount, 1)
 	klog.V(2).Infof("custom metrics query namespace=%s pod=%s metric=%s", name.Namespace, name.Name, info.Metric)
-	val, ok, err := p.metricForPod(ctx, name.Namespace, name.Name, info.Metric)
+	val, ok, err := p.store.GetGauge(ctx, name.Namespace, name.Name, info.Metric)
 	if err != nil {
 		return nil, err
 	}
@@ -181,8 +162,7 @@ func (p *PodsProvider) logSummary() {
 	for range ticker.C {
 		queries := atomic.SwapUint64(&p.queryCount, 0)
 		results := atomic.SwapUint64(&p.resultCount, 0)
-		zeros := atomic.SwapUint64(&p.zeroCount, 0)
-		klog.Infof("custom metrics queries in last %s: %d, returned items: %d, synthesized_zeros: %d", p.logEvery, queries, results, zeros)
+		klog.Infof("custom metrics queries in last %s: %d, returned items: %d", p.logEvery, queries, results)
 	}
 }
 
@@ -191,7 +171,7 @@ func (p *PodsProvider) ListAllMetrics() []cmprovider.CustomMetricInfo {
 	infos := make([]cmprovider.CustomMetricInfo, 0, len(podmetrics.Names()))
 	for _, metricName := range podmetrics.Names() {
 		infos = append(infos, cmprovider.CustomMetricInfo{
-			GroupResource: schema.GroupResource{Group: "", Resource: "pods"},
+			GroupResource: podGroupResource,
 			Metric:        metricName,
 			Namespaced:    true,
 		})
