@@ -71,10 +71,6 @@ func (s *MetricsServer) StreamMetrics(stream metricsv3.MetricsService_StreamMetr
 			atomic.AddUint64(&s.dropByID, 1)
 			continue
 		}
-		if err := s.store.TouchPod(ctx, streamNS, streamPod); err != nil {
-			klog.Warningf("redis heartbeat failed ns=%s pod=%s: %v", streamNS, streamPod, err)
-		}
-
 		metricValues, seenValues, droppedByName := collectMetricValues(msg.GetEnvoyMetrics())
 		if droppedByName > 0 {
 			atomic.AddUint64(&s.dropName, uint64(droppedByName))
@@ -114,7 +110,7 @@ func collectMetricValues(metricFamilies []*dto.MetricFamily) (map[string]float64
 		}
 
 		for _, metric := range metricFamily.GetMetric() {
-			if gauge := metric.GetGauge(); gauge != nil {
+			if gauge := metric.GetGauge(); gauge != nil && gauge.Value != nil {
 				totals[metricName] += gauge.GetValue()
 				seen[metricName] = true
 			}

@@ -153,7 +153,7 @@ Istio/Envoy와 kube-apiserver용의 2개의 endpoints 노출. 관련 생태계�
 
 1. gRPC `StreamMetrics` 요청 수신
 2. `node.metadata` 또는 Istio `node.id`에서 Pod와 namespace 식별
-3. Pod heartbeat 갱신 후 Envoy 통계를 `inbound_active_requests`, `outbound_active_requests`, `active_connections`로 분류·합산
+3. Envoy에서 수집한 gauge를 `inbound_active_requests`, `outbound_active_requests`, `active_connections`로 분류·합산
 4. 각 값을 key = `{context, namespace, pod, metric}`으로 Redis에 저장(TTL 포함)
 
 ### kube-apiserver용 API bizlogic
