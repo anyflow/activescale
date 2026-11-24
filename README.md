@@ -15,7 +15,7 @@ Unlike CPU and memory metrics collected through metrics-server, Envoy pushes act
 
 ## Local development
 
-Run the tests and build the adapter with Go.
+Run the tests and build the adapter with the Go version in `go.mod`.
 
 ```sh
 go test ./...
